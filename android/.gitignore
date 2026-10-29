@@ -1,0 +1,16 @@
+# Android
+*.iml
+gradle.properties
+local.properties
+.idea/
+
+# Flutter
+.dart_tool/
+.flutter-plugins-dependencies
+
+# Build
+build/
+
+# Generated
+Generated.xcconfig
+flutter_export_environment.sh

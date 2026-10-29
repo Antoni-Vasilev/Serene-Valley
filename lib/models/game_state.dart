@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'dart:math';
 import 'player.dart';
 import 'world.dart';
 
@@ -21,6 +22,9 @@ class GameState with ChangeNotifier {
   Offset? selectedTile;
   String interactionTarget;
   
+  // Random instance
+  final Random _random = Random();
+
   GameState({
     Offset? playerStart,
     int? worldSeed,
@@ -103,11 +107,10 @@ class GameState with ChangeNotifier {
     }
     
     // Small energy cost for moving
-    player.energy = (player.energy - 0.01).clamp(0, player.maxEnergy).floor();
+    player.energy = (player.energy - 0.05).clamp(0, player.maxEnergy).floor();
   }
 
   void _updateCamera() {
-    // Smooth camera follow
     Offset targetOffset = Offset(
       player.position.dx - 8,
       player.position.dy - 6,
@@ -125,37 +128,54 @@ class GameState with ChangeNotifier {
     int tileY = player.position.dy.floor();
     
     // Check for trees
-    if (world.trees.containsKey(Offset(tileX.toDouble(), tileY.toDouble()))) {
-      interactionTarget = 'tree';
-    }
-    // Check for rocks
-    else if (world.rocks.containsKey(Offset(tileX.toDouble(), tileY.toDouble()))) {
-      interactionTarget = 'rock';
-    }
-    // Check for water
-    else if (world.water.containsKey(Offset(tileX.toDouble(), tileY.toDouble()))) {
-      interactionTarget = 'water';
-    }
-    // Check for plants
-    else if (world.plants.containsKey(Offset(tileX.toDouble(), tileY.toDouble()))) {
-      interactionTarget = world.plants[Offset(tileX.toDouble(), tileY.toDouble())]!;
-    }
-    // Check for animals
-    else if (world.animals.containsKey(Offset(tileX.toDouble(), tileY.toDouble()))) {
-      interactionTarget = world.animals[Offset(tileX.toDouble(), tileY.toDouble())]!;
-    }
-    // Check for village
-    else if (world.villageLocations.isNotEmpty) {
-      for (var location in world.villageLocations) {
-        if ((location - player.position).distance <= 3) {
-          interactionTarget = 'village';
-          return;
-        }
+    for (var entry in world.trees.entries) {
+      if (entry.value.dx.floor() == tileX && entry.value.dy.floor() == tileY) {
+        interactionTarget = 'tree';
+        return;
       }
-      interactionTarget = 'none';
-    } else {
-      interactionTarget = 'none';
     }
+    
+    // Check for rocks
+    for (var entry in world.rocks.entries) {
+      if (entry.value.dx.floor() == tileX && entry.value.dy.floor() == tileY) {
+        interactionTarget = 'rock';
+        return;
+      }
+    }
+    
+    // Check for water
+    for (var entry in world.water.entries) {
+      if (entry.value.dx.floor() == tileX && entry.value.dy.floor() == tileY) {
+        interactionTarget = 'water';
+        return;
+      }
+    }
+    
+    // Check for plants
+    for (var entry in world.plants.entries) {
+      if (entry.value.dx.floor() == tileX && entry.value.dy.floor() == tileY) {
+        interactionTarget = 'berry_bush';
+        return;
+      }
+    }
+    
+    // Check for animals
+    for (var entry in world.animals.entries) {
+      if (entry.value.dx.floor() == tileX && entry.value.dy.floor() == tileY) {
+        interactionTarget = 'animal';
+        return;
+      }
+    }
+    
+    // Check for village
+    for (var location in world.villageLocations) {
+      if ((location - player.position).distance <= 3) {
+        interactionTarget = 'village';
+        return;
+      }
+    }
+    
+    interactionTarget = 'none';
   }
 
   void interact() {
@@ -163,33 +183,36 @@ class GameState with ChangeNotifier {
     
     int tileX = player.position.dx.floor();
     int tileY = player.position.dy.floor();
-    Offset playerTile = Offset(tileX.toDouble(), tileY.toDouble());
     
     switch (interactionTarget) {
       case 'tree':
         if (player.selectedTool == 'axe' || player.selectedTool == 'none') {
-          // Chop tree
-          world.trees.remove(playerTile);
-          player.addItem('wood', 3);
-          player.addExperience(5);
-          currentAction = 'Chopped tree! +3 Wood';
+          // Find and remove the tree
+          String treeKey = 'tree_${tileX}_${tileY}';
+          if (world.trees.containsKey(treeKey)) {
+            world.trees.remove(treeKey);
+            player.addItem('wood', 3);
+            player.addExperience(5);
+            currentAction = 'Chopped tree! +3 Wood';
+          }
         }
         break;
         
       case 'rock':
         if (player.selectedTool == 'pickaxe' || player.selectedTool == 'none') {
-          // Mine rock
-          world.rocks.remove(playerTile);
-          player.addItem('stone', 2);
-          player.addExperience(5);
-          currentAction = 'Mined rock! +2 Stone';
+          String rockKey = 'rock_${tileX}_${tileY}';
+          if (world.rocks.containsKey(rockKey)) {
+            world.rocks.remove(rockKey);
+            player.addItem('stone', 2);
+            player.addExperience(5);
+            currentAction = 'Mined rock! +2 Stone';
+          }
         }
         break;
         
       case 'water':
         if (player.selectedTool == 'fishing_rod') {
-          // Fish
-          if (random.nextDouble() < 0.3) {
+          if (_random.nextDouble() < 0.3) {
             player.addItem('fish', 1);
             player.addExperience(10);
             currentAction = 'Caught a fish!';
@@ -200,18 +223,17 @@ class GameState with ChangeNotifier {
         break;
         
       case 'berry_bush':
-        // Pick berries
-        world.plants.remove(playerTile);
-        player.addItem('berry', 2);
-        player.addExperience(3);
-        currentAction = 'Picked berries! +2 Berries';
+        String plantKey = 'berry_bush_${tileX}_${tileY}';
+        if (world.plants.containsKey(plantKey)) {
+          world.plants.remove(plantKey);
+          player.addItem('berry', 2);
+          player.addExperience(3);
+          currentAction = 'Picked berries! +2 Berries';
+        }
         break;
         
-      case 'rabbit':
-      case 'deer':
-      case 'bird':
-        // Animals run away
-        currentAction = 'The ${interactionTarget} ran away!';
+      case 'animal':
+        currentAction = 'The animal ran away!';
         break;
         
       case 'village':
@@ -222,7 +244,6 @@ class GameState with ChangeNotifier {
         currentAction = 'Nothing to interact with';
     }
     
-    // Clear action after a short time
     Future.delayed(const Duration(seconds: 2), () {
       currentAction = 'none';
       notifyListeners();
@@ -322,16 +343,11 @@ class GameState with ChangeNotifier {
   }
 
   void rest() {
-    // Restore energy over time
     player.energy = (player.energy + 1).clamp(0, player.maxEnergy);
     player.hunger = (player.hunger - 0.1).clamp(0, player.maxHunger);
     
-    // Small chance to restore health
-    if (player.hunger > 50 && random.nextDouble() < 0.01) {
+    if (player.hunger > 50 && _random.nextDouble() < 0.01) {
       player.heal(1);
     }
   }
-
-  // Helper random
-  final Random random = Random();
 }

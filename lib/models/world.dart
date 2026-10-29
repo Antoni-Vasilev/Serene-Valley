@@ -15,11 +15,11 @@ class World {
   // World data
   List<List<String>> tiles;
   List<List<String>> objects;
-  Map<Offset, String> trees;
-  Map<Offset, String> rocks;
-  Map<Offset, String> water;
-  Map<Offset, String> animals;
-  Map<Offset, String> plants;
+  Map<String, Offset> trees;
+  Map<String, Offset> rocks;
+  Map<String, Offset> water;
+  Map<String, Offset> animals;
+  Map<String, Offset> plants;
   
   // Spawn points
   Offset playerSpawn;
@@ -44,7 +44,7 @@ class World {
        villageLocations = [],
        caveEntrances = [],
        riverPaths = [],
-       timeOfDay = 6.0, // 6 AM
+       timeOfDay = 6.0,
        isDay = true;
 
   void generate() {
@@ -71,7 +71,6 @@ class World {
   }
 
   void _generateTerrain() {
-    // Base terrain with some variation
     for (int y = 0; y < height; y++) {
       for (int x = 0; x < width; x++) {
         double noise = random.nextDouble();
@@ -87,7 +86,6 @@ class World {
   }
 
   void _generateRivers() {
-    // Create a river path
     int startX = random.nextInt(width);
     int startY = 0;
     
@@ -97,7 +95,7 @@ class World {
       
       if (random.nextDouble() < 0.7) {
         tiles[y][x] = 'water';
-        water[Offset(x.toDouble(), y.toDouble())] = 'river';
+        water['river_$x_$y'] = Offset(x.toDouble(), y.toDouble());
         riverPaths.add(Offset(x.toDouble(), y.toDouble()));
       }
       
@@ -106,7 +104,6 @@ class World {
   }
 
   void _generateForests() {
-    // Create forest areas
     int forestCount = random.nextInt(5) + 3;
     for (int i = 0; i < forestCount; i++) {
       int centerX = random.nextInt(width - 20) + 10;
@@ -127,7 +124,6 @@ class World {
   }
 
   void _generateMountains() {
-    // Create mountain areas
     int mountainCount = random.nextInt(3) + 2;
     for (int i = 0; i < mountainCount; i++) {
       int centerX = random.nextInt(width - 30) + 15;
@@ -153,13 +149,11 @@ class World {
   }
 
   void _generateVillage() {
-    // Create a small village
     int villageX = random.nextInt(width - 40) + 20;
     int villageY = random.nextInt(height - 40) + 20;
     
     villageLocations.add(Offset(villageX.toDouble(), villageY.toDouble()));
     
-    // Village center
     for (int y = villageY - 2; y <= villageY + 2; y++) {
       for (int x = villageX - 2; x <= villageX + 2; x++) {
         if (x >= 0 && x < width && y >= 0 && y < height) {
@@ -168,7 +162,6 @@ class World {
       }
     }
     
-    // Houses
     for (int i = 0; i < 3; i++) {
       int houseX = villageX + (random.nextInt(3) - 1) * 8;
       int houseY = villageY + (random.nextInt(3) - 1) * 6;
@@ -186,12 +179,10 @@ class World {
       }
     }
     
-    // Set player spawn near village
     playerSpawn = Offset(villageX.toDouble(), villageY.toDouble() - 5);
   }
 
   void _generateCaves() {
-    // Create cave entrances
     int caveCount = random.nextInt(3) + 1;
     for (int i = 0; i < caveCount; i++) {
       int caveX = random.nextInt(width - 10) + 5;
@@ -214,7 +205,7 @@ class World {
           tiles[y][x] != 'wood_floor' && 
           tiles[y][x] != 'wood_wall' &&
           random.nextDouble() < 0.7) {
-        trees[Offset(x.toDouble(), y.toDouble())] = 'tree';
+        trees['tree_$x_$y'] = Offset(x.toDouble(), y.toDouble());
       }
     }
   }
@@ -229,7 +220,7 @@ class World {
           tiles[y][x] != 'wood_floor' && 
           tiles[y][x] != 'wood_wall' &&
           random.nextDouble() < 0.6) {
-        rocks[Offset(x.toDouble(), y.toDouble())] = 'rock';
+        rocks['rock_$x_$y'] = Offset(x.toDouble(), y.toDouble());
       }
     }
   }
@@ -247,11 +238,11 @@ class World {
           random.nextDouble() < 0.5) {
         
         if (random.nextDouble() < 0.4) {
-          plants[Offset(x.toDouble(), y.toDouble())] = 'berry_bush';
+          plants['berry_bush_$x_$y'] = Offset(x.toDouble(), y.toDouble());
         } else if (random.nextDouble() < 0.6) {
-          plants[Offset(x.toDouble(), y.toDouble())] = 'flower';
+          plants['flower_$x_$y'] = Offset(x.toDouble(), y.toDouble());
         } else {
-          plants[Offset(x.toDouble(), y.toDouble())] = 'grass_tall';
+          plants['grass_tall_$x_$y'] = Offset(x.toDouble(), y.toDouble());
         }
       }
     }
@@ -268,11 +259,11 @@ class World {
           tiles[y][x] != 'wood_wall') {
         
         if (random.nextDouble() < 0.4) {
-          animals[Offset(x.toDouble(), y.toDouble())] = 'rabbit';
+          animals['rabbit_$x_$y'] = Offset(x.toDouble(), y.toDouble());
         } else if (random.nextDouble() < 0.7) {
-          animals[Offset(x.toDouble(), y.toDouble())] = 'deer';
+          animals['deer_$x_$y'] = Offset(x.toDouble(), y.toDouble());
         } else {
-          animals[Offset(x.toDouble(), y.toDouble())] = 'bird';
+          animals['bird_$x_$y'] = Offset(x.toDouble(), y.toDouble());
         }
       }
     }
@@ -291,7 +282,7 @@ class World {
             double dist = sqrt(pow(x - centerX, 2) + pow(y - centerY, 2));
             if (dist < lakeSize && random.nextDouble() < 0.6) {
               tiles[y][x] = 'water';
-              water[Offset(x.toDouble(), y.toDouble())] = 'lake';
+              water['lake_$x_$y'] = Offset(x.toDouble(), y.toDouble());
             }
           }
         }
@@ -314,19 +305,17 @@ class World {
   }
 
   void updateTime(double deltaTime) {
-    timeOfDay += deltaTime * 0.001; // Time passes slower in game
+    timeOfDay += deltaTime * 0.001;
     
     if (timeOfDay >= 24.0) {
       timeOfDay = 0.0;
     }
     
-    // Update day/night cycle
     isDay = timeOfDay >= 6.0 && timeOfDay <= 18.0;
   }
 
   Color getTimeColor() {
     if (timeOfDay >= 6.0 && timeOfDay <= 8.0) {
-      // Sunrise
       double progress = (timeOfDay - 6.0) / 2.0;
       return Color.lerp(
         const Color(0xFF1a1a2e),
@@ -334,7 +323,6 @@ class World {
         progress,
       )!;
     } else if (timeOfDay >= 16.0 && timeOfDay <= 18.0) {
-      // Sunset
       double progress = (timeOfDay - 16.0) / 2.0;
       return Color.lerp(
         const Color(0xFF87CEEB),
@@ -342,10 +330,8 @@ class World {
         progress,
       )!;
     } else if (isDay) {
-      // Day
       return const Color(0xFF87CEEB);
     } else {
-      // Night
       return const Color(0xFF1a1a2e);
     }
   }
@@ -353,12 +339,11 @@ class World {
   double getLightLevel() {
     if (isDay) {
       if (timeOfDay >= 12.0 && timeOfDay <= 13.0) {
-        return 1.0; // Brightest at noon
+        return 1.0;
       }
       double timeFromNoon = (timeOfDay - 12.0).abs();
       return 1.0 - (timeFromNoon / 6.0).clamp(0.0, 0.5);
     } else {
-      // Moonlight
       return 0.2;
     }
   }

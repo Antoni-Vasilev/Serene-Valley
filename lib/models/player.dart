@@ -1,4 +1,5 @@
 import 'dart:ui';
+import 'dart:math';
 import 'package:flutter/material.dart';
 
 class Player {
@@ -104,14 +105,14 @@ class Player {
 
   void updateStats() {
     // Decrease hunger over time
-    hunger = (hunger - 0.05).clamp(0, maxHunger).floor();
+    hunger = (hunger - 0.1).clamp(0.0, maxHunger.toDouble()).floor();
     
     // Decrease energy over time
-    energy = (energy - 0.02).clamp(0, maxEnergy).floor();
+    energy = (energy - 0.05).clamp(0.0, maxEnergy.toDouble()).floor();
     
     // If hunger is too low, take damage
     if (hunger <= 10) {
-      takeDamage(0.1);
+      takeDamage(1);
     }
     
     // If energy is too low, move slower

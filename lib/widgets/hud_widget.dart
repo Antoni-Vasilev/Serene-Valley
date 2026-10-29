@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../models/player.dart';
 import '../models/game_state.dart';
+import '../models/world.dart';
 
 class HUDWidget extends StatelessWidget {
   final Player player;
@@ -127,7 +128,7 @@ class HUDWidget extends StatelessWidget {
   Widget _buildLevelIndicator() {
     return Row(
       children: [
-        Icon(Icons.star, color: Colors.yellow, size: 20),
+        const Icon(Icons.star, color: Colors.yellow, size: 20),
         const SizedBox(width: 4),
         Text(
           'Lvl ${player.level}',
@@ -179,15 +180,10 @@ class HUDWidget extends StatelessWidget {
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceEvenly,
         children: [
-          // Movement buttons (for touch controls)
           _buildControlButton(Icons.arrow_upward, 'Up', () {}),
-          
-          // Quick actions
           _buildControlButton(Icons.inventory, 'Inventory', onInventoryToggle),
           _buildControlButton(Icons.build, 'Craft', onCraftingToggle),
           _buildControlButton(Icons.map, 'Map', onMapToggle),
-          
-          // Selected tool
           _buildSelectedToolIndicator(),
         ],
       ),
@@ -360,7 +356,7 @@ class HUDWidget extends StatelessWidget {
       case 'berry':
         return Icons.local_florist;
       case 'fish':
-        return Icons.fishing;
+        return Icons.fish;
       case 'axe':
         return Icons.agriculture;
       case 'pickaxe':
@@ -370,9 +366,9 @@ class HUDWidget extends StatelessWidget {
       case 'stick':
         return Icons.linear_scale;
       case 'seeds':
-        return Icons.seed;
+        return Icons.grass;
       case 'wooden_sword':
-        return Icons.sword;
+        return Icons.agriculture;
       case 'campfire':
         return Icons.fireplace;
       default:
@@ -392,7 +388,7 @@ class HUDWidget extends StatelessWidget {
         'name': 'Wooden Sword',
         'id': 'wooden_sword',
         'ingredients': {'wood': 2, 'stick': 1},
-        'icon': Icons.sword,
+        'icon': Icons.agriculture,
       },
       {
         'name': 'Campfire',
@@ -563,16 +559,12 @@ class HUDWidget extends StatelessWidget {
               ),
               const SizedBox(height: 16),
               ElevatedButton(
-                onPressed: () {
-                  // Save game logic would go here
-                },
+                onPressed: () {},
                 child: const Text('Save Game'),
               ),
               const SizedBox(height: 16),
               ElevatedButton(
-                onPressed: () {
-                  // Return to main menu
-                },
+                onPressed: () {},
                 child: const Text('Main Menu'),
               ),
             ],

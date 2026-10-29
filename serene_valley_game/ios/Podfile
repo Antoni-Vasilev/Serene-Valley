@@ -1,0 +1,75 @@
+# Uncomment this line to define a global platform for your project
+# platform :ios, '12.0'
+
+# CocoaPods analytics sends network stats synchronously affecting flutter build latency.
+ENV['COCOAPODS_DISABLE_STATS'] = 'true'
+
+project 'Runner', {
+  'Debug' => :debug,
+  'Profile' => :release,
+  'Release' => :release,
+}
+
+def flutter_application_path
+  generated_xcode_build_settings_path = File.expand_path(File.join('..', '.flutter-plugins-zephyr'), __FILE__)
+  unless File.exist?(generated_xcode_build_settings_path)
+    generated_xcode_build_settings_path = File.expand_path(File.join('..', 'ios', 'Flutter', 'Generated.xcconfig'), __FILE__)
+  end
+  generated_xcode_build_settings_path
+end
+
+# Load Flutter fire hose (firehose.sh) for performing hot reloads on iOS.
+# NOTE: Use `archive` to build for release:
+#       flutter build ios --release --no-codesign
+
+app_path = File.expand_path('Runner', __FILE__)
+parent_directory = File.expand_path('..', app_path)
+
+# Load the plugin Podfiles
+plugin_pods = parse_KV_file(generated_xcode_build_settings_path)
+
+# The path for each plugin which contains a Podfile
+plugin_podfile_paths = plugin_pods.map { |plugin| File.join(parent_directory, plugin) }.select { |path| File.exist?(path) }
+
+# Load the Podfiles
+plugin_podfile_paths.each do |plugin_podfile|
+  load File.expand_path(plugin_podfile, __FILE__)
+end
+
+# The target name is most likely the name of your project. Try and load the Podfile
+# that has the same name as this file. You can also use a different Podfile if you
+# prefer to maintain separate Podfiles for different build targets make sure that
+# the Podfile is in the same directory as this file
+target 'Runner' do
+  use_frameworks!
+  use_modular_headers!
+
+  # Flutter Pod
+  copied_flutter_dir = File.join(parent_directory, 'Flutter')
+  if File.directory?(copied_flutter_dir)
+    use_frameworks!
+    use_modular_headers!
+    flutter_application_path = File.expand_path(copied_flutter_dir, __FILE__)
+    load File.join(flutter_application_path, '.ios', 'Flutter', 'podhelper.rb')
+    install_all_flutter_pods(flutter_application_path)
+  else
+    # Copy Flutter framework and pods from sky engine
+    flutter_application_path = File.expand_path('Flutter', __FILE__)
+    load File.join(flutter_application_path, 'podhelper.rb')
+    install_all_flutter_pods(flutter_application_path)
+  end
+
+  # Pods for Runner
+  target 'RunnerTests' do
+    inherit! :search_paths
+  end
+
+  target 'RunnerUITests' do
+  end
+end
+
+post_install do |installer|
+  installer.pods_project.targets.each do |target|
+    flutter_additional_ios_build_settings(target)
+  end
+end

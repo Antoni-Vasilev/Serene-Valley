@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:flutter/services.dart';
+import '../graphics/ui_textures.dart';
 import '../models/game_state.dart';
 import '../services/save_service.dart';
-import '../widgets/world_widget.dart';
 import '../widgets/hud_widget.dart';
+import '../widgets/pixel_ui.dart';
+import '../widgets/world_widget.dart';
 
 class GameScreen extends StatefulWidget {
   final GameState gameState;
@@ -24,27 +26,10 @@ class _GameScreenState extends State<GameScreen> with SingleTickerProviderStateM
   Offset _joystickInput = Offset.zero;
   // Set once the player chose to go back to the title screen.
   bool _leaving = false;
+  // Briefly true after saving from the pause menu.
+  bool _justSaved = false;
 
   static const double tileSize = 16.0;
-
-  static const Map<String, IconData> _actionIcons = {
-    'talk': Icons.chat_bubble,
-    'chop': Icons.forest,
-    'mine': Icons.construction,
-    'pick': Icons.spa,
-    'pick_apple': Icons.apple,
-    'search': Icons.grass,
-    'fish': Icons.phishing,
-    'cook': Icons.outdoor_grill,
-    'sleep': Icons.bed,
-    'plant': Icons.eco,
-    'water': Icons.water_drop,
-    'growing': Icons.hourglass_bottom,
-    'harvest': Icons.agriculture,
-    'bridge_site': Icons.info_outline,
-    'cave': Icons.visibility,
-    'watch': Icons.pets,
-  };
 
   GameState get gameState => widget.gameState;
 
@@ -128,9 +113,10 @@ class _GameScreenState extends State<GameScreen> with SingleTickerProviderStateM
   Future<void> _saveFromMenu() async {
     await _save();
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Game saved'), duration: Duration(seconds: 2)),
-    );
+    setState(() => _justSaved = true);
+    Future.delayed(const Duration(seconds: 2), () {
+      if (mounted) setState(() => _justSaved = false);
+    });
   }
 
   Future<void> _goToMainMenu() async {
@@ -149,7 +135,7 @@ class _GameScreenState extends State<GameScreen> with SingleTickerProviderStateM
   Widget build(BuildContext context) {
     final padding = MediaQuery.of(context).padding;
     // Keep touch controls above the bottom control bar.
-    final controlsBottom = padding.bottom + 72;
+    final controlsBottom = padding.bottom + 88;
 
     return PopScope(
       canPop: false,
@@ -165,7 +151,7 @@ class _GameScreenState extends State<GameScreen> with SingleTickerProviderStateM
               child: WorldWidget(
                 gameState: gameState,
                 tileSize: tileSize,
-                hudInsets: EdgeInsets.only(top: padding.top + 100, bottom: controlsBottom),
+                hudInsets: EdgeInsets.only(top: padding.top + 150, bottom: controlsBottom),
               ),
             ),
 
@@ -184,15 +170,16 @@ class _GameScreenState extends State<GameScreen> with SingleTickerProviderStateM
                         ),
                       ),
                       Positioned(
-                        right: 24,
-                        bottom: controlsBottom + 24,
-                        child: _buildActionButton(),
+                        right: 20,
+                        bottom: controlsBottom + 16,
+                        child: _ActionButton(target: gameState.target, onPressed: _interact),
                       ),
                     ],
                     HUDWidget(
                       gameState: gameState,
                       onSave: _saveFromMenu,
                       onMainMenu: _goToMainMenu,
+                      justSaved: _justSaved,
                     ),
                   ],
                 ),
@@ -201,44 +188,6 @@ class _GameScreenState extends State<GameScreen> with SingleTickerProviderStateM
           ],
         ),
       ),
-    );
-  }
-
-  Widget _buildActionButton() {
-    final target = gameState.target;
-
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        // Says what the button will do, e.g. "Chop" or "Talk".
-        AnimatedOpacity(
-          opacity: target == null ? 0 : 1,
-          duration: const Duration(milliseconds: 150),
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-            decoration: BoxDecoration(
-              color: Colors.black.withValues(alpha: 0.6),
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: Text(
-              target?.label ?? '',
-              style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.bold),
-            ),
-          ),
-        ),
-        const SizedBox(height: 6),
-        SizedBox(
-          width: 72,
-          height: 72,
-          child: FloatingActionButton(
-            heroTag: null,
-            shape: const CircleBorder(),
-            backgroundColor: target != null ? Colors.amber : Colors.grey.withValues(alpha: 0.6),
-            onPressed: _interact,
-            child: Icon(_actionIcons[target?.type] ?? Icons.touch_app, size: 32),
-          ),
-        ),
-      ],
     );
   }
 }
@@ -298,27 +247,100 @@ class _JoystickState extends State<Joystick> {
         child: Stack(
           alignment: Alignment.center,
           children: [
-            Container(
-              decoration: BoxDecoration(
-                color: Colors.black.withValues(alpha: 0.3),
-                shape: BoxShape.circle,
-                border: Border.all(color: Colors.white.withValues(alpha: 0.5), width: 2),
-              ),
+            RawImage(
+              image: UiTextures.instance.joystickBase,
+              width: widget.size,
+              height: widget.size,
+              fit: BoxFit.fill,
+              filterQuality: FilterQuality.none,
+              opacity: const AlwaysStoppedAnimation(0.85),
             ),
             Transform.translate(
               offset: _knob,
-              child: Container(
-                width: 48,
-                height: 48,
-                decoration: BoxDecoration(
-                  color: Colors.white.withValues(alpha: 0.85),
-                  shape: BoxShape.circle,
-                ),
+              child: RawImage(
+                image: UiTextures.instance.joystickKnob,
+                width: 52,
+                height: 52,
+                fit: BoxFit.fill,
+                filterQuality: FilterQuality.none,
               ),
             ),
           ],
         ),
       ),
+    );
+  }
+}
+
+/// The round button that does whatever is nearby, with a sign saying what.
+class _ActionButton extends StatefulWidget {
+  final Interaction? target;
+  final VoidCallback onPressed;
+
+  const _ActionButton({required this.target, required this.onPressed});
+
+  @override
+  State<_ActionButton> createState() => _ActionButtonState();
+}
+
+class _ActionButtonState extends State<_ActionButton> {
+  bool _down = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final target = widget.target;
+    final textures = UiTextures.instance;
+    final active = target != null;
+    final image = active
+        ? (_down ? textures.roundActivePressed : textures.roundActive)
+        : (_down ? textures.roundIdlePressed : textures.roundIdle);
+    final px = uiPixel(context);
+    final size = 26 * px;
+
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        AnimatedOpacity(
+          opacity: active ? 1 : 0,
+          duration: const Duration(milliseconds: 150),
+          child: PixelPanel(
+            frame: PixelFrame.plate,
+            padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 0),
+            child: Text(target?.label ?? '', style: pixelText(15, bold: true)),
+          ),
+        ),
+        const SizedBox(height: 6),
+        Semantics(
+          button: true,
+          label: target?.label ?? 'Interact',
+          child: GestureDetector(
+            key: const ValueKey('action-button'),
+            onTapDown: (_) => setState(() => _down = true),
+            onTapUp: (_) => setState(() => _down = false),
+            onTapCancel: () => setState(() => _down = false),
+            onTap: widget.onPressed,
+            child: SizedBox(
+              width: size,
+              height: size,
+              child: Stack(
+                alignment: Alignment.center,
+                children: [
+                  RawImage(image: image, width: size, height: size, fit: BoxFit.fill, filterQuality: FilterQuality.none),
+                  Padding(
+                    // The face sinks when pressed.
+                    padding: EdgeInsets.only(top: (_down ? 3 : 0) * px, bottom: (_down ? 0 : 2) * px),
+                    child: PixelIcon(
+                      UiTextures.actionIcon(target?.type),
+                      size: 12 * px * 1.25,
+                      opacity: active ? 1 : 0.6,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ],
     );
   }
 }

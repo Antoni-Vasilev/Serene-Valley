@@ -2,8 +2,10 @@ import 'dart:math';
 import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import '../graphics/textures.dart';
+import '../graphics/ui_textures.dart';
 import '../models/game_state.dart';
 import '../models/npc.dart';
+import 'pixel_ui.dart';
 import 'tile_widget.dart';
 
 /// Renders the visible part of the world, its objects and the player onto a
@@ -519,7 +521,7 @@ class WorldPainter extends CustomPainter {
     for (final npc in gameState.world.npcs) {
       final centre = npc.position + const Offset(0.5, 0.5);
       if ((centre - gameState.player.position).distance > 3) continue;
-      _drawText(canvas, npc.name, toScreen(npc.position + const Offset(0.5, -0.3)), Colors.white, 11);
+      _drawText(canvas, npc.name, toScreen(npc.position + const Offset(0.5, -0.3)), UiColors.cream, 13);
     }
   }
 
@@ -527,19 +529,19 @@ class WorldPainter extends CustomPainter {
     if (gameState.questTargetPosition == null) return;
     final elder = gameState.world.npc(Npc.elderId);
     if (elder == null) return;
-    final bob = sin(clock * 3) * 0.08;
-    final c = toScreen(elder.position + Offset(0.5, -1.0 + bob));
-    final r = 0.26 * px;
-    canvas.drawCircle(c, r, Paint()..color = const Color(0xFFFFD54F));
-    canvas.drawCircle(
-      c,
-      r,
-      Paint()
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = 2
-        ..color = const Color(0xFF5D4037),
+    final bob = (sin(clock * 3) * 2).roundToDouble();
+    final pixel = uiPixelFor(devicePixelRatio);
+    final image = gameState.questReady ? UiTextures.instance.question : UiTextures.instance.exclamation;
+    // Above the elder's name.
+    final bottom = toScreen(elder.position + const Offset(0.5, -0.55));
+    final w = image.width * pixel;
+    final h = image.height * pixel;
+    canvas.drawImageRect(
+      image,
+      Rect.fromLTWH(0, 0, image.width.toDouble(), image.height.toDouble()),
+      Rect.fromLTWH(bottom.dx - w / 2, bottom.dy - h + bob * pixel, w, h),
+      _pixels,
     );
-    _drawText(canvas, gameState.questReady ? '?' : '!', c, const Color(0xFF5D4037), r * 1.3, shadow: false);
   }
 
   void _drawFloatingTexts(Canvas canvas, Offset Function(Offset) toScreen) {
@@ -547,7 +549,7 @@ class WorldPainter extends CustomPainter {
       final progress = text.age / FloatingText.lifetime;
       final pos = toScreen(text.position + Offset(0, -0.3 - progress * 0.9));
       final alpha = (1 - progress * progress).clamp(0.0, 1.0);
-      _drawText(canvas, text.text, pos, text.color.withValues(alpha: alpha), 14);
+      _drawText(canvas, text.text, pos, text.color.withValues(alpha: alpha), 16);
     }
   }
 
@@ -571,35 +573,30 @@ class WorldPainter extends CustomPainter {
     final sy = dir.dy == 0 ? double.infinity : (view.height / 2) / dir.dy.abs();
     final edge = view.center + dir * min(sx, sy);
 
+    final arrow = UiTextures.instance.icon('arrow');
+    final arrowSize = 12 * uiPixelFor(devicePixelRatio) * 1.5;
     canvas.save();
     canvas.translate(edge.dx, edge.dy);
     canvas.rotate(dir.direction);
-    final arrow = Path()
-      ..moveTo(16, 0)
-      ..lineTo(-10, -12)
-      ..lineTo(-4, 0)
-      ..lineTo(-10, 12)
-      ..close();
-    canvas.drawPath(arrow, Paint()..color = const Color(0xFFFFD54F));
-    canvas.drawPath(
+    canvas.drawImageRect(
       arrow,
-      Paint()
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = 2
-        ..color = const Color(0xFF5D4037),
+      const Rect.fromLTWH(0, 0, 12, 12),
+      Rect.fromCenter(center: Offset.zero, width: arrowSize, height: arrowSize),
+      _pixels,
     );
     canvas.restore();
   }
 
-  void _drawText(Canvas canvas, String text, Offset centre, Color color, double fontSize, {bool shadow = true}) {
+  void _drawText(Canvas canvas, String text, Offset centre, Color color, double fontSize) {
     final painter = TextPainter(
       text: TextSpan(
         text: text,
-        style: TextStyle(
-          color: color,
-          fontSize: fontSize,
-          fontWeight: FontWeight.bold,
-          shadows: shadow ? [Shadow(color: Colors.black.withValues(alpha: color.a * 0.9), blurRadius: 3)] : null,
+        style: pixelText(fontSize, color: color, bold: true, shadow: false).copyWith(
+          shadows: [
+            Shadow(color: UiColors.shadow.withValues(alpha: color.a), offset: const Offset(0, 2)),
+            Shadow(color: UiColors.shadow.withValues(alpha: color.a * 0.8), offset: const Offset(1, 1)),
+            Shadow(color: UiColors.shadow.withValues(alpha: color.a * 0.8), offset: const Offset(-1, 1)),
+          ],
         ),
       ),
       textDirection: TextDirection.ltr,

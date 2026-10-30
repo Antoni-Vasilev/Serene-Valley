@@ -18,3 +18,9 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
+
+  # Pixel font for the interface (SIL Open Font License, see assets/fonts/OFL.txt).
+  fonts:
+    - family: Pixelify
+      fonts:
+        - asset: assets/fonts/PixelifySans.ttf

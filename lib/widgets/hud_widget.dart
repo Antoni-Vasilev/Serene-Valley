@@ -1,22 +1,26 @@
 import 'dart:math';
 import 'package:flutter/material.dart';
+import '../graphics/ui_textures.dart';
 import '../models/game_state.dart';
 import '../models/items.dart';
 import '../models/player.dart';
 import 'dialog_panel.dart';
 import 'map_overlay.dart';
-import 'panel.dart';
+import 'pixel_ui.dart';
 
 class HUDWidget extends StatelessWidget {
   final GameState gameState;
   final VoidCallback onSave;
   final VoidCallback onMainMenu;
+  // Shows a "Game saved" note in the pause menu.
+  final bool justSaved;
 
   const HUDWidget({
     super.key,
     required this.gameState,
     required this.onSave,
     required this.onMainMenu,
+    this.justSaved = false,
   });
 
   Player get player => gameState.player;
@@ -25,38 +29,50 @@ class HUDWidget extends StatelessWidget {
   Widget build(BuildContext context) {
     return Stack(
       children: [
-        // Top bar - stats and the current quest
+        // Top: stats, clock and the current quest, with messages below.
         Positioned(
           top: 0,
           left: 0,
           right: 0,
           child: SafeArea(
             bottom: false,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                _buildStatsBar(context),
-                _buildQuestTracker(),
-              ],
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(8, 6, 8, 0),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Expanded(child: _buildStats()),
+                      const SizedBox(width: 6),
+                      _buildClock(),
+                    ],
+                  ),
+                  const SizedBox(height: 6),
+                  _buildQuestTracker(),
+                  if (gameState.currentAction != 'none') ...[
+                    const SizedBox(height: 8),
+                    _buildActionMessage(),
+                  ],
+                ],
+              ),
             ),
           ),
         ),
-
-        // Action message
-        if (gameState.currentAction != 'none')
-          Positioned(
-            top: 0,
-            left: 16,
-            right: 16,
-            child: SafeArea(child: Center(child: _buildActionMessage())),
-          ),
 
         // Bottom bar - controls
         Positioned(
           left: 0,
           right: 0,
           bottom: 0,
-          child: SafeArea(top: false, child: _buildControlBar(context)),
+          child: SafeArea(
+            top: false,
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(6, 0, 6, 6),
+              child: _buildControlBar(context),
+            ),
+          ),
         ),
 
         if (gameState.showInventory) _buildInventoryOverlay(context),
@@ -64,115 +80,105 @@ class HUDWidget extends StatelessWidget {
         if (gameState.showMap) MapOverlay(gameState: gameState),
         if (gameState.dialogNpcId != null) DialogPanel(gameState: gameState),
         if (gameState.confirmSleep) SleepPrompt(gameState: gameState),
-        if (gameState.showChapterComplete) ChapterCompletePanel(gameState: gameState),
+        if (gameState.showChapterComplete)
+          ChapterCompletePanel(gameState: gameState),
         if (gameState.isPaused) _buildPauseMenu(context),
         if (gameState.isSleeping) _buildSleepFade(),
       ],
     );
   }
 
-  Widget _buildStatsBar(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.fromLTRB(8, 6, 8, 6),
-      color: Colors.black.withValues(alpha: 0.7),
+  Widget _buildStats() {
+    return PixelPanel(
+      frame: PixelFrame.plate,
+      padding: const EdgeInsets.fromLTRB(4, 3, 4, 3),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Row(
-            children: [
-              _buildStatIcon(Icons.favorite, Colors.red, player.health.toDouble(), player.maxHealth, 'Health'),
-              const SizedBox(width: 8),
-              _buildStatIcon(Icons.fastfood, Colors.orange, player.hunger, player.maxHunger, 'Hunger'),
-              const SizedBox(width: 8),
-              _buildStatIcon(Icons.bolt, Colors.yellow, player.energy, player.maxEnergy, 'Energy'),
-            ],
-          ),
-          const SizedBox(height: 4),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Expanded(child: _buildLevelIndicator()),
-              _buildTimeIndicator(),
-            ],
+          _buildStat('heart', const Color(0xFFE5484D), player.health.toDouble(),
+              player.maxHealth, 'Health'),
+          const SizedBox(height: 3),
+          _buildStat('food', const Color(0xFFF59A23), player.hunger,
+              player.maxHunger, 'Hunger'),
+          const SizedBox(height: 3),
+          _buildStat('energy', const Color(0xFFFFD54F), player.energy,
+              player.maxEnergy, 'Energy'),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildStat(
+      String icon, Color color, double current, int max, String label) {
+    return Tooltip(
+      message: label,
+      child: Row(
+        children: [
+          PixelIcon(icon, size: 18),
+          const SizedBox(width: 6),
+          Expanded(
+              child: PixelBar(value: current / max, color: color, height: 12)),
+          const SizedBox(width: 6),
+          SizedBox(
+            width: 28,
+            child: Text('${current.ceil()}',
+                style: pixelText(13, bold: true), textAlign: TextAlign.right),
           ),
         ],
       ),
     );
   }
 
-  Widget _buildStatIcon(IconData icon, Color color, double current, int max, String label) {
-    double percentage = (current / max).clamp(0.0, 1.0);
-
-    return Expanded(
-      child: Tooltip(
-        message: label,
-        child: Row(
-          children: [
-            Icon(icon, color: color, size: 18),
-            const SizedBox(width: 4),
-            Expanded(
-              child: LinearProgressIndicator(
-                value: percentage,
-                backgroundColor: Colors.grey[800],
-                color: color,
-                minHeight: 8,
-                borderRadius: BorderRadius.circular(4),
-              ),
-            ),
-            const SizedBox(width: 4),
-            Text(
-              '${current.ceil()}',
-              style: const TextStyle(color: Colors.white, fontSize: 11),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildLevelIndicator() {
-    return Row(
-      children: [
-        const Icon(Icons.star, color: Colors.yellow, size: 20),
-        const SizedBox(width: 4),
-        Text(
-          'Lvl ${player.level}',
-          style: const TextStyle(color: Colors.white, fontSize: 14),
-        ),
-        const SizedBox(width: 4),
-        Flexible(
-          child: Text(
-            'XP: ${player.experience}/${player.experienceToNextLevel}',
-            style: const TextStyle(color: Colors.white, fontSize: 10),
-            overflow: TextOverflow.ellipsis,
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildTimeIndicator() {
+  Widget _buildClock() {
     final world = gameState.world;
     final time = world.timeOfDay;
     final hours = time.floor().toString().padLeft(2, '0');
-    final minutes = ((time - time.floor()) * 60).floor().toString().padLeft(2, '0');
-    IconData icon = world.isDay ? Icons.wb_sunny : Icons.nightlight_round;
-    Color color = world.isDay ? Colors.yellow : Colors.blue;
+    final minutes =
+        ((time - time.floor()) * 60).floor().toString().padLeft(2, '0');
 
-    return Row(
-      children: [
-        Text(
-          'Day ${world.day}',
-          style: const TextStyle(color: Colors.white70, fontSize: 12),
-        ),
-        const SizedBox(width: 8),
-        Icon(icon, color: color, size: 20),
-        const SizedBox(width: 4),
-        Text(
-          '$hours:$minutes',
-          style: const TextStyle(color: Colors.white, fontSize: 14),
-        ),
-      ],
+    return PixelPanel(
+      frame: PixelFrame.plate,
+      padding: const EdgeInsets.fromLTRB(5, 3, 5, 3),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              PixelIcon(world.isDay ? 'sun' : 'moon', size: 20),
+              const SizedBox(width: 6),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('Day ${world.day}',
+                      style: pixelText(12, color: UiColors.faded)),
+                  Text('$hours:$minutes', style: pixelText(17, bold: true)),
+                ],
+              ),
+            ],
+          ),
+          const SizedBox(height: 3),
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const PixelIcon('star', size: 14),
+              const SizedBox(width: 4),
+              Text('Lv ${player.level}',
+                  style: pixelText(13, bold: true, color: UiColors.gold)),
+              const SizedBox(width: 6),
+              SizedBox(
+                width: 44,
+                child: PixelBar(
+                  value: player.experience / player.experienceToNextLevel,
+                  color: const Color(0xFF7FB6F0),
+                  height: 9,
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
     );
   }
 
@@ -194,31 +200,32 @@ class HUDWidget extends StatelessWidget {
     } else {
       title = quest.title;
       detail = quest.requires.entries
-          .map((e) => '${Items.of(e.key).name} ${min(player.count(e.key), e.value)}/${e.value}')
+          .map((e) =>
+              '${Items.of(e.key).name} ${min(player.count(e.key), e.value)}/${e.value}')
           .join('   ');
       highlight = false;
     }
 
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.fromLTRB(10, 5, 10, 6),
-      color: Colors.black.withValues(alpha: 0.5),
+    return PixelPanel(
+      frame: PixelFrame.note,
+      padding: const EdgeInsets.fromLTRB(4, 2, 4, 2),
       child: Row(
         children: [
-          Icon(Icons.flag, color: highlight ? Colors.amber : Colors.white70, size: 18),
+          const PixelIcon('flag', size: 18),
           const SizedBox(width: 8),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               mainAxisSize: MainAxisSize.min,
               children: [
-                Text(
-                  title,
-                  style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold),
-                ),
+                Text(title,
+                    style: pixelText(14, bold: true, color: UiColors.ink)),
                 Text(
                   detail,
-                  style: TextStyle(color: highlight ? Colors.amber : Colors.white70, fontSize: 11),
+                  style: pixelText(13,
+                      color: highlight
+                          ? const Color(0xFFB0401C)
+                          : UiColors.inkSoft),
                 ),
               ],
             ),
@@ -229,53 +236,52 @@ class HUDWidget extends StatelessWidget {
   }
 
   Widget _buildActionMessage() {
-    return Container(
-      margin: const EdgeInsets.only(top: 118),
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      decoration: BoxDecoration(
-        color: Colors.black.withValues(alpha: 0.75),
-        borderRadius: BorderRadius.circular(8),
-      ),
+    return PixelPanel(
+      frame: PixelFrame.note,
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
       child: Text(
         gameState.currentAction,
-        style: const TextStyle(color: Colors.white, fontSize: 15),
+        style: pixelText(14, color: UiColors.ink),
         textAlign: TextAlign.center,
       ),
     );
   }
 
   Widget _buildControlBar(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
-      color: Colors.black.withValues(alpha: 0.7),
+    return PixelPanel(
+      frame: PixelFrame.plate,
+      padding: const EdgeInsets.all(3),
       child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
         children: [
-          _buildControlButton(Icons.inventory, 'Items', gameState.toggleInventory),
-          _buildControlButton(Icons.build, 'Craft', gameState.toggleCrafting),
-          _buildControlButton(Icons.map, 'Map', gameState.toggleMap),
-          _buildControlButton(Icons.bedtime, 'Sleep', gameState.requestSleep),
-          _buildControlButton(Icons.pause, 'Pause', gameState.togglePause),
+          _buildControlButton('bag', 'Items', gameState.toggleInventory),
+          _buildControlButton('hammer', 'Craft', gameState.toggleCrafting),
+          _buildControlButton('map', 'Map', gameState.toggleMap),
+          _buildControlButton('moon', 'Sleep', gameState.requestSleep),
+          _buildControlButton('pause', 'Pause', gameState.togglePause),
         ],
       ),
     );
   }
 
-  Widget _buildControlButton(IconData icon, String label, Function() onPressed) {
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        IconButton(
-          icon: Icon(icon, color: Colors.white),
+  Widget _buildControlButton(
+      String icon, String label, VoidCallback onPressed) {
+    return Expanded(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 2),
+        child: PixelButton(
           onPressed: onPressed,
           tooltip: label,
-          visualDensity: VisualDensity.compact,
+          padding: const EdgeInsets.symmetric(vertical: 2),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              PixelIcon(icon, size: 24),
+              const SizedBox(height: 2),
+              Text(label, style: pixelText(12, bold: true)),
+            ],
+          ),
         ),
-        Text(
-          label,
-          style: const TextStyle(color: Colors.white, fontSize: 10),
-        ),
-      ],
+      ),
     );
   }
 
@@ -283,49 +289,55 @@ class HUDWidget extends StatelessWidget {
     final items = player.inventory.entries.where((e) => e.value > 0).toList();
     final note = gameState.inventoryNote;
 
-    return FullScreenPanel(
+    return PixelWindow(
       title: 'Inventory',
-      icon: Icons.inventory,
+      icon: 'bag',
       onClose: gameState.toggleInventory,
       child: Column(
         children: [
           // Eating changes the stats, so show them here too.
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+          PixelPanel(
+            frame: PixelFrame.plate,
+            padding: const EdgeInsets.all(3),
             child: Row(
               children: [
-                _buildStatIcon(Icons.favorite, Colors.red, player.health.toDouble(), player.maxHealth, 'Health'),
+                Expanded(
+                  child: _buildStat('heart', const Color(0xFFE5484D),
+                      player.health.toDouble(), player.maxHealth, 'Health'),
+                ),
                 const SizedBox(width: 8),
-                _buildStatIcon(Icons.fastfood, Colors.orange, player.hunger, player.maxHunger, 'Hunger'),
-                const SizedBox(width: 8),
-                _buildStatIcon(Icons.bolt, Colors.yellow, player.energy, player.maxEnergy, 'Energy'),
+                Expanded(
+                  child: _buildStat('food', const Color(0xFFF59A23),
+                      player.hunger, player.maxHunger, 'Hunger'),
+                ),
               ],
             ),
           ),
+          const SizedBox(height: 8),
           Expanded(
             child: GridView.builder(
-              padding: const EdgeInsets.all(8),
               gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
                 crossAxisCount: 4,
-                childAspectRatio: 0.8,
-                crossAxisSpacing: 8,
-                mainAxisSpacing: 8,
+                childAspectRatio: 0.7,
+                crossAxisSpacing: 6,
+                mainAxisSpacing: 6,
               ),
               itemCount: items.length,
-              itemBuilder: (context, index) => _buildInventoryItem(items[index].key, items[index].value),
+              itemBuilder: (context, index) =>
+                  _buildInventoryItem(items[index].key, items[index].value),
             ),
           ),
-          Container(
+          const SizedBox(height: 8),
+          SizedBox(
             width: double.infinity,
-            margin: const EdgeInsets.symmetric(horizontal: 8),
-            padding: const EdgeInsets.all(10),
-            decoration: BoxDecoration(
-              color: Colors.grey[900],
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: Text(
-              note ?? 'Tap food to eat it, or a campfire to place it in front of you.',
-              style: const TextStyle(color: Colors.white70, fontSize: 13),
+            child: PixelPanel(
+              frame: PixelFrame.parchment,
+              padding: const EdgeInsets.all(4),
+              child: Text(
+                note ??
+                    'Tap food to eat it, or a campfire to place it in front of you.',
+                style: pixelText(14, color: UiColors.ink),
+              ),
             ),
           ),
         ],
@@ -343,33 +355,41 @@ class HUDWidget extends StatelessWidget {
 
     return GestureDetector(
       onTap: () => gameState.useItem(item),
-      child: Container(
-        padding: const EdgeInsets.all(4),
-        decoration: BoxDecoration(
-          color: Colors.grey[800],
-          borderRadius: BorderRadius.circular(8),
-          border: Border.all(
-            color: hint != null ? info.color.withValues(alpha: 0.6) : Colors.transparent,
-            width: 1.5,
-          ),
-        ),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
+      child: PixelPanel(
+        frame: hint != null ? PixelFrame.highlightSlot : PixelFrame.slot,
+        padding: const EdgeInsets.all(2),
+        child: Stack(
           children: [
-            Icon(info.icon, color: info.color, size: 26),
-            const SizedBox(height: 4),
-            Text(
-              info.name,
-              style: const TextStyle(color: Colors.white, fontSize: 10),
-              textAlign: TextAlign.center,
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
+            Center(
+              child: FittedBox(
+                fit: BoxFit.scaleDown,
+                child: SizedBox(
+                  width: 64,
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      PixelIcon(UiTextures.itemIcon(item), size: 36),
+                      const SizedBox(height: 3),
+                      Text(
+                        info.name,
+                        style: pixelText(11),
+                        textAlign: TextAlign.center,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      if (hint != null)
+                        Text(hint,
+                            style: pixelText(11,
+                                bold: true, color: UiColors.gold)),
+                    ],
+                  ),
+                ),
+              ),
             ),
-            Text(
-              hint == null ? '$count' : '$count · $hint',
-              style: const TextStyle(color: Colors.white, fontSize: 12),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
+            Positioned(
+              top: 0,
+              right: 0,
+              child: Text('$count', style: pixelText(13, bold: true)),
             ),
           ],
         ),
@@ -380,47 +400,64 @@ class HUDWidget extends StatelessWidget {
   Widget _buildCraftingOverlay(BuildContext context) {
     final recipes = GameState.recipes.entries.toList();
 
-    return FullScreenPanel(
+    return PixelWindow(
       title: 'Crafting',
-      icon: Icons.build,
+      icon: 'hammer',
       onClose: gameState.toggleCrafting,
-      child: ListView.builder(
-        padding: const EdgeInsets.all(8),
+      child: ListView.separated(
         itemCount: recipes.length,
+        separatorBuilder: (_, __) => const SizedBox(height: 6),
         itemBuilder: (context, index) {
           final id = recipes[index].key;
           final info = Items.of(id);
           final canCraft = gameState.canCraft(id);
 
-          return Card(
-            color: Colors.grey[800],
-            child: ListTile(
-              leading: Icon(info.icon, color: info.color),
-              title: Text(
-                '${info.name}  (have ${player.count(id)})',
-                style: const TextStyle(color: Colors.white),
-              ),
-              subtitle: Text.rich(
-                TextSpan(
-                  children: [
-                    for (final e in recipes[index].value.entries)
-                      TextSpan(
-                        text: '${Items.of(e.key).name} ${player.count(e.key)}/${e.value}   ',
-                        style: TextStyle(
-                          color: player.count(e.key) >= e.value ? Colors.lightGreenAccent : Colors.grey,
-                        ),
+          return PixelPanel(
+            frame: PixelFrame.slot,
+            padding: const EdgeInsets.all(4),
+            child: Row(
+              children: [
+                PixelIcon(UiTextures.itemIcon(id), size: 36),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('${info.name}  (have ${player.count(id)})',
+                          style: pixelText(15, bold: true)),
+                      const SizedBox(height: 4),
+                      Wrap(
+                        spacing: 10,
+                        runSpacing: 2,
+                        children: [
+                          for (final e in recipes[index].value.entries)
+                            Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                PixelIcon(UiTextures.itemIcon(e.key), size: 16),
+                                const SizedBox(width: 3),
+                                Text(
+                                  '${player.count(e.key)}/${e.value}',
+                                  style: pixelText(
+                                    13,
+                                    color: player.count(e.key) >= e.value
+                                        ? UiColors.good
+                                        : UiColors.faded,
+                                  ),
+                                ),
+                              ],
+                            ),
+                        ],
                       ),
-                  ],
+                    ],
+                  ),
                 ),
-              ),
-              trailing: ElevatedButton(
-                onPressed: canCraft ? () => gameState.craftItem(id) : null,
-                style: ElevatedButton.styleFrom(
-                  disabledBackgroundColor: Colors.white10,
-                  disabledForegroundColor: Colors.white38,
+                PixelButton(
+                  onPressed: canCraft ? () => gameState.craftItem(id) : null,
+                  style: PixelButtonStyle.gold,
+                  child: const Text('Craft'),
                 ),
-                child: const Text('Craft'),
-              ),
+              ],
             ),
           );
         },
@@ -429,34 +466,31 @@ class HUDWidget extends StatelessWidget {
   }
 
   Widget _buildPauseMenu(BuildContext context) {
-    return Positioned.fill(
-      child: ColoredBox(
-        color: Colors.black.withValues(alpha: 0.85),
-        child: Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              const Text(
-                'Paused',
-                style: TextStyle(color: Colors.white, fontSize: 32),
-              ),
-              const SizedBox(height: 24),
-              ElevatedButton(
+    return PixelModal(
+      child: IntrinsicWidth(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text('Paused',
+                style: pixelText(30, bold: true, color: UiColors.gold),
+                textAlign: TextAlign.center),
+            const SizedBox(height: 16),
+            PixelButton(
                 onPressed: gameState.togglePause,
-                child: const Text('Resume'),
-              ),
-              const SizedBox(height: 16),
-              ElevatedButton(
-                onPressed: onSave,
-                child: const Text('Save Game'),
-              ),
-              const SizedBox(height: 16),
-              ElevatedButton(
-                onPressed: onMainMenu,
-                child: const Text('Main Menu'),
-              ),
+                style: PixelButtonStyle.gold,
+                child: const Text('Resume')),
+            const SizedBox(height: 10),
+            PixelButton(onPressed: onSave, child: const Text('Save Game')),
+            const SizedBox(height: 10),
+            PixelButton(onPressed: onMainMenu, child: const Text('Main Menu')),
+            if (justSaved) ...[
+              const SizedBox(height: 10),
+              Text('Game saved',
+                  style: pixelText(14, color: UiColors.good),
+                  textAlign: TextAlign.center),
             ],
-          ),
+          ],
         ),
       ),
     );
@@ -473,7 +507,10 @@ class HUDWidget extends StatelessWidget {
           child: Center(
             child: Text(
               'Zzz...',
-              style: TextStyle(color: Colors.white.withValues(alpha: alpha), fontSize: 28),
+              style: pixelText(32,
+                  bold: true,
+                  color: UiColors.cream.withValues(alpha: alpha),
+                  shadow: false),
             ),
           ),
         ),

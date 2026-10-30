@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'screens/title_screen.dart';
 import 'services/save_service.dart';
+import 'widgets/pixel_ui.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -23,7 +24,12 @@ class SereneValleyApp extends StatelessWidget {
       theme: ThemeData(
         colorScheme: ColorScheme.fromSeed(
           seedColor: const Color(0xFF6B8E23),
-          brightness: Brightness.light,
+          brightness: Brightness.dark,
+        ),
+        fontFamily: 'Pixelify',
+        tooltipTheme: TooltipThemeData(
+          decoration: const BoxDecoration(color: Color(0xFF2A1D14)),
+          textStyle: pixelText(14),
         ),
         useMaterial3: true,
       ),

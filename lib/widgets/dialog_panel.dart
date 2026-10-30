@@ -1,19 +1,28 @@
 import 'package:flutter/material.dart';
+import '../graphics/textures.dart';
+import '../graphics/ui_textures.dart';
 import '../models/game_state.dart';
 import '../models/items.dart';
 import '../models/npc.dart';
 import '../models/quest.dart';
-import '../graphics/textures.dart';
-
-const _panelColor = Color(0xFF2B2118);
-const _accent = Color(0xFFFFD54F);
+import 'pixel_ui.dart';
 
 /// Conversation with a villager. The elder's version also shows the current
 /// quest and lets the player accept it or hand it in.
-class DialogPanel extends StatelessWidget {
+class DialogPanel extends StatefulWidget {
   final GameState gameState;
 
   const DialogPanel({super.key, required this.gameState});
+
+  @override
+  State<DialogPanel> createState() => _DialogPanelState();
+}
+
+class _DialogPanelState extends State<DialogPanel> {
+  // The text the player tapped to see in full.
+  String? _skipped;
+
+  GameState get gameState => widget.gameState;
 
   @override
   Widget build(BuildContext context) {
@@ -21,6 +30,7 @@ class DialogPanel extends StatelessWidget {
     final isElder = npc.id == Npc.elderId;
     final quest = gameState.currentQuest;
     final replying = gameState.dialogReply != null;
+    final text = gameState.dialogText;
 
     final List<Widget> buttons;
     if (replying) {
@@ -45,58 +55,63 @@ class DialogPanel extends StatelessWidget {
           Positioned.fill(
             child: GestureDetector(
               onTap: replying ? null : gameState.closeDialog,
-              child: const ColoredBox(color: Colors.black38),
+              child: const ColoredBox(color: Color(0x66000000)),
             ),
           ),
           Positioned(
-            left: 12,
-            right: 12,
-            bottom: 12,
+            left: 8,
+            right: 8,
+            bottom: 8,
             child: SafeArea(
               top: false,
-              child: Material(
-                color: _panelColor,
-                elevation: 8,
-                borderRadius: BorderRadius.circular(16),
-                child: Padding(
-                  padding: const EdgeInsets.all(16),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        children: [
-                          Portrait(look: npc.look),
-                          const SizedBox(width: 12),
-                          Text(
-                            npc.name,
-                            style: const TextStyle(color: _accent, fontSize: 18, fontWeight: FontWeight.bold),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 12),
-                      ConstrainedBox(
-                        constraints: const BoxConstraints(maxHeight: 200),
-                        child: SingleChildScrollView(
-                          child: Text(
-                            gameState.dialogText,
-                            style: const TextStyle(color: Colors.white, fontSize: 15, height: 1.4),
+              child: PixelPanel(
+                frame: PixelFrame.parchment,
+                padding: const EdgeInsets.fromLTRB(6, 4, 6, 4),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Portrait(look: npc.look),
+                        const SizedBox(width: 10),
+                        Flexible(
+                          child: PixelPanel(
+                            frame: PixelFrame.plate,
+                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+                            child: Text(
+                              npc.name,
+                              style: pixelText(18, bold: true, color: UiColors.gold),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
                           ),
                         ),
-                      ),
-                      if (isElder && quest != null) ...[
-                        const SizedBox(height: 12),
-                        _QuestBox(gameState: gameState, quest: quest, isNew: replying),
                       ],
-                      const SizedBox(height: 12),
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.end,
-                        children: [
-                          for (final b in buttons) ...[const SizedBox(width: 8), b],
-                        ],
+                    ),
+                    const SizedBox(height: 10),
+                    GestureDetector(
+                      onTap: () => setState(() => _skipped = text),
+                      child: ConstrainedBox(
+                        constraints: const BoxConstraints(maxHeight: 210),
+                        child: SingleChildScrollView(child: _TypedText(text, instant: _skipped == text)),
                       ),
+                    ),
+                    if (isElder && quest != null) ...[
+                      const SizedBox(height: 10),
+                      _QuestBox(gameState: gameState, quest: quest, isNew: replying),
                     ],
-                  ),
+                    const SizedBox(height: 10),
+                    SizedBox(
+                      width: double.infinity,
+                      child: Wrap(
+                        alignment: WrapAlignment.end,
+                        spacing: 8,
+                        runSpacing: 8,
+                        children: buttons,
+                      ),
+                    ),
+                  ],
                 ),
               ),
             ),
@@ -107,9 +122,40 @@ class DialogPanel extends StatelessWidget {
   }
 
   Widget _button(String label, VoidCallback onPressed, {bool primary = false}) {
-    return primary
-        ? ElevatedButton(onPressed: onPressed, child: Text(label))
-        : TextButton(onPressed: onPressed, child: Text(label, style: const TextStyle(color: Colors.white70)));
+    return PixelButton(
+      onPressed: onPressed,
+      style: primary ? PixelButtonStyle.gold : PixelButtonStyle.wood,
+      child: Text(label),
+    );
+  }
+}
+
+/// Text that writes itself out letter by letter, like a story being told.
+/// The full text is laid out from the start so the box doesn't grow.
+class _TypedText extends StatelessWidget {
+  final String text;
+  final bool instant;
+
+  const _TypedText(this.text, {required this.instant});
+
+  @override
+  Widget build(BuildContext context) {
+    final style = pixelText(16, color: UiColors.ink);
+    if (instant) return Text(text, style: style);
+    return TweenAnimationBuilder<int>(
+      key: ValueKey(text),
+      tween: IntTween(begin: 0, end: text.length),
+      duration: Duration(milliseconds: 18 * text.length),
+      builder: (context, shown, _) => Text.rich(
+        TextSpan(
+          children: [
+            TextSpan(text: text.substring(0, shown)),
+            TextSpan(text: text.substring(shown), style: const TextStyle(color: Colors.transparent)),
+          ],
+        ),
+        style: style,
+      ),
+    );
   }
 }
 
@@ -123,20 +169,23 @@ class _QuestBox extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final player = gameState.player;
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: Colors.black.withValues(alpha: 0.3),
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: _accent.withValues(alpha: 0.4)),
-      ),
+    return PixelPanel(
+      frame: PixelFrame.note,
+      padding: const EdgeInsets.all(4),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            '${isNew ? 'New task' : 'Task'}: ${quest.title}',
-            style: const TextStyle(color: _accent, fontWeight: FontWeight.bold),
+          Row(
+            children: [
+              const PixelIcon('flag', size: 16),
+              const SizedBox(width: 6),
+              Expanded(
+                child: Text(
+                  '${isNew ? 'New task' : 'Task'}: ${quest.title}',
+                  style: pixelText(15, bold: true, color: const Color(0xFFB0401C)),
+                ),
+              ),
+            ],
           ),
           const SizedBox(height: 6),
           for (final e in quest.requires.entries)
@@ -144,23 +193,17 @@ class _QuestBox extends StatelessWidget {
               padding: const EdgeInsets.symmetric(vertical: 2),
               child: Row(
                 children: [
-                  Icon(Items.of(e.key).icon, color: Items.of(e.key).color, size: 18),
+                  PixelIcon(UiTextures.itemIcon(e.key), size: 20),
                   const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(Items.of(e.key).name, style: const TextStyle(color: Colors.white)),
-                  ),
+                  Expanded(child: Text(Items.of(e.key).name, style: pixelText(15, color: UiColors.ink))),
                   Text(
                     '${player.count(e.key).clamp(0, e.value)} / ${e.value}',
-                    style: TextStyle(
-                      color: player.count(e.key) >= e.value ? Colors.lightGreenAccent : Colors.white70,
-                      fontWeight: FontWeight.bold,
+                    style: pixelText(
+                      15,
+                      bold: true,
+                      color: player.count(e.key) >= e.value ? const Color(0xFF3E8A2E) : UiColors.inkSoft,
                     ),
                   ),
-                  if (player.count(e.key) >= e.value)
-                    const Padding(
-                      padding: EdgeInsets.only(left: 4),
-                      child: Icon(Icons.check, color: Colors.lightGreenAccent, size: 16),
-                    ),
                 ],
               ),
             ),
@@ -170,7 +213,7 @@ class _QuestBox extends StatelessWidget {
   }
 }
 
-/// A villager's face for the dialog panel.
+/// A villager's face in a little frame.
 class Portrait extends StatelessWidget {
   final CharacterLook look;
 
@@ -178,15 +221,15 @@ class Portrait extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      width: 52,
-      height: 52,
-      decoration: BoxDecoration(
-        color: Colors.black26,
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: _accent.withValues(alpha: 0.5)),
+    final px = uiPixel(context);
+    return PixelPanel(
+      frame: PixelFrame.slot,
+      padding: EdgeInsets.zero,
+      child: SizedBox(
+        width: 12 * px * 1.5,
+        height: 12 * px * 1.5,
+        child: CustomPaint(painter: _PortraitPainter(look)),
       ),
-      child: CustomPaint(painter: _PortraitPainter(look)),
     );
   }
 }
@@ -203,7 +246,7 @@ class _PortraitPainter extends CustomPainter {
     canvas.drawImageRect(
       image,
       const Rect.fromLTWH(2, 0, 12, 12),
-      Rect.fromLTWH(4, 4, size.width - 8, size.height - 8),
+      Offset.zero & size,
       Paint()..filterQuality = FilterQuality.none,
     );
   }
@@ -220,46 +263,35 @@ class SleepPrompt extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final night = !gameState.world.isDay;
-    return Positioned.fill(
-      child: ColoredBox(
-        color: Colors.black54,
-        child: Center(
-          child: Material(
-            color: _panelColor,
-            borderRadius: BorderRadius.circular(16),
-            child: Padding(
-              padding: const EdgeInsets.all(20),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  const Icon(Icons.bedtime, color: _accent, size: 36),
-                  const SizedBox(height: 8),
-                  Text(
-                    night ? 'Sleep until morning?' : 'Take a nap?',
-                    style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold),
-                  ),
-                  const SizedBox(height: 6),
-                  Text(
-                    night ? 'You will wake up at 06:00, fully rested.' : 'Three hours pass and your energy is restored.',
-                    style: const TextStyle(color: Colors.white70),
-                  ),
-                  const SizedBox(height: 16),
-                  Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      TextButton(
-                        onPressed: gameState.cancelSleep,
-                        child: const Text('Not now', style: TextStyle(color: Colors.white70)),
-                      ),
-                      const SizedBox(width: 8),
-                      ElevatedButton(onPressed: gameState.sleep, child: const Text('Sleep')),
-                    ],
-                  ),
-                ],
-              ),
-            ),
+    return PixelModal(
+      onDismiss: gameState.cancelSleep,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const PixelIcon('moon', size: 40),
+          const SizedBox(height: 10),
+          Text(
+            night ? 'Sleep until morning?' : 'Take a nap?',
+            style: pixelText(22, bold: true, color: UiColors.gold),
+            textAlign: TextAlign.center,
           ),
-        ),
+          const SizedBox(height: 6),
+          Text(
+            night ? 'You will wake up at 06:00, fully rested.' : 'Three hours pass and your energy is restored.',
+            style: pixelText(15),
+            textAlign: TextAlign.center,
+          ),
+          const SizedBox(height: 16),
+          Wrap(
+            alignment: WrapAlignment.center,
+            spacing: 10,
+            runSpacing: 10,
+            children: [
+              PixelButton(onPressed: gameState.cancelSleep, child: const Text('Not now')),
+              PixelButton(onPressed: gameState.sleep, style: PixelButtonStyle.gold, child: const Text('Sleep')),
+            ],
+          ),
+        ],
       ),
     );
   }
@@ -272,49 +304,43 @@ class ChapterCompletePanel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Positioned.fill(
-      child: ColoredBox(
-        color: Colors.black.withValues(alpha: 0.85),
-        child: SafeArea(
-          child: Center(
-            child: Padding(
-              padding: const EdgeInsets.all(24),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  const Icon(Icons.celebration, color: _accent, size: 56),
-                  const SizedBox(height: 12),
-                  const Text(
-                    'Chapter 1 complete!',
-                    style: TextStyle(color: Colors.white, fontSize: 28, fontWeight: FontWeight.bold),
-                  ),
-                  const SizedBox(height: 4),
-                  const Text(
-                    'The Valley Awakens',
-                    style: TextStyle(color: _accent, fontSize: 16),
-                  ),
-                  const SizedBox(height: 20),
-                  const Text(
-                    'You rebuilt the bridge, lit the village fire, fed everyone and brought in the first harvest.\n\n'
-                    'Thanks for playing the first version of Serene Valley. The story continues in the next update!',
-                    style: TextStyle(color: Colors.white70, fontSize: 15, height: 1.4),
-                    textAlign: TextAlign.center,
-                  ),
-                  const SizedBox(height: 16),
-                  Text(
-                    'Day ${gameState.world.day}  ·  Level ${gameState.player.level}',
-                    style: const TextStyle(color: Colors.white, fontSize: 14),
-                  ),
-                  const SizedBox(height: 24),
-                  ElevatedButton(
-                    onPressed: gameState.closeChapterComplete,
-                    child: const Text('Keep playing'),
-                  ),
-                ],
-              ),
-            ),
+    return PixelModal(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              PixelIcon('star', size: 30),
+              SizedBox(width: 8),
+              PixelIcon('star', size: 44),
+              SizedBox(width: 8),
+              PixelIcon('star', size: 30),
+            ],
           ),
-        ),
+          const SizedBox(height: 12),
+          Text('Chapter 1 complete!', style: pixelText(28, bold: true, color: UiColors.gold), textAlign: TextAlign.center),
+          const SizedBox(height: 4),
+          Text('The Valley Awakens', style: pixelText(17, color: UiColors.faded)),
+          const SizedBox(height: 16),
+          Text(
+            'You rebuilt the bridge, lit the village fire, fed everyone and brought in the first harvest.\n\n'
+            'Thanks for playing the first version of Serene Valley. The story continues in the next update!',
+            style: pixelText(16),
+            textAlign: TextAlign.center,
+          ),
+          const SizedBox(height: 14),
+          Text(
+            'Day ${gameState.world.day}  ·  Level ${gameState.player.level}',
+            style: pixelText(15, bold: true),
+          ),
+          const SizedBox(height: 18),
+          PixelButton(
+            onPressed: gameState.closeChapterComplete,
+            style: PixelButtonStyle.gold,
+            child: const Text('Keep playing'),
+          ),
+        ],
       ),
     );
   }

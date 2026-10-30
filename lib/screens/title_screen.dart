@@ -1,8 +1,9 @@
-import 'dart:math';
 import 'package:flutter/material.dart';
 import '../graphics/textures.dart';
+import '../graphics/ui_textures.dart';
 import '../models/game_state.dart';
 import '../services/save_service.dart';
+import '../widgets/pixel_ui.dart';
 import 'game_screen.dart';
 
 class TitleScreen extends StatefulWidget {
@@ -50,13 +51,43 @@ class _TitleScreenState extends State<TitleScreen> {
     if (_summary != null) {
       final confirmed = await showDialog<bool>(
         context: context,
-        builder: (context) => AlertDialog(
-          title: const Text('Start a new game?'),
-          content: const Text('Your current progress will be lost.'),
-          actions: [
-            TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
-            TextButton(onPressed: () => Navigator.pop(context, true), child: const Text('New game')),
-          ],
+        barrierColor: UiColors.dim,
+        builder: (context) => Center(
+          child: Padding(
+            padding: const EdgeInsets.all(24),
+            child: Material(
+              type: MaterialType.transparency,
+              child: PixelPanel(
+                padding: const EdgeInsets.all(12),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text('Start a new game?',
+                        style: pixelText(22, bold: true, color: UiColors.gold)),
+                    const SizedBox(height: 8),
+                    Text('Your current progress will be lost.',
+                        style: pixelText(16), textAlign: TextAlign.center),
+                    const SizedBox(height: 16),
+                    Wrap(
+                      alignment: WrapAlignment.center,
+                      spacing: 10,
+                      runSpacing: 10,
+                      children: [
+                        PixelButton(
+                            onPressed: () => Navigator.pop(context, false),
+                            child: const Text('Cancel')),
+                        PixelButton(
+                          onPressed: () => Navigator.pop(context, true),
+                          style: PixelButtonStyle.gold,
+                          child: const Text('New game'),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
         ),
       );
       if (confirmed != true || !mounted) return;
@@ -72,7 +103,8 @@ class _TitleScreenState extends State<TitleScreen> {
   Future<void> _play(GameState state) async {
     await Navigator.of(context).push(
       MaterialPageRoute(
-        builder: (_) => GameScreen(gameState: state, saveService: widget.saveService),
+        builder: (_) =>
+            GameScreen(gameState: state, saveService: widget.saveService),
       ),
     );
     if (mounted) await _refresh();
@@ -82,9 +114,16 @@ class _TitleScreenState extends State<TitleScreen> {
   Widget build(BuildContext context) {
     final summary = _summary;
     return Scaffold(
+      backgroundColor: const Color(0xFF1F2547),
       body: Stack(
         children: [
-          const Positioned.fill(child: CustomPaint(painter: _ValleyPainter())),
+          Positioned.fill(
+            child: RawImage(
+              image: UiTextures.instance.titleScene,
+              fit: BoxFit.cover,
+              filterQuality: FilterQuality.none,
+            ),
+          ),
           SafeArea(
             child: Center(
               child: Padding(
@@ -92,35 +131,53 @@ class _TitleScreenState extends State<TitleScreen> {
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    const Text(
-                      'Serene Valley',
+                    Text(
+                      'Serene\nValley',
                       textAlign: TextAlign.center,
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 44,
-                        fontWeight: FontWeight.bold,
-                        shadows: [Shadow(color: Colors.black54, blurRadius: 8, offset: Offset(0, 2))],
+                      style: pixelText(56,
+                              bold: true, color: UiColors.cream, shadow: false)
+                          .copyWith(
+                        height: 1.0,
+                        // A hard outline all round, like the art.
+                        shadows: const [
+                          Shadow(color: UiColors.shadow, offset: Offset(3, 0)),
+                          Shadow(color: UiColors.shadow, offset: Offset(-3, 0)),
+                          Shadow(color: UiColors.shadow, offset: Offset(0, 3)),
+                          Shadow(color: UiColors.shadow, offset: Offset(0, -3)),
+                          Shadow(color: UiColors.shadow, offset: Offset(3, 6)),
+                          Shadow(
+                              color: Color(0xFF8A3A2A), offset: Offset(0, 7)),
+                        ],
                       ),
                     ),
-                    const SizedBox(height: 6),
-                    const Text(
-                      'Chapter 1: The Valley Awakens',
-                      style: TextStyle(color: Colors.white, fontSize: 16, shadows: [Shadow(color: Colors.black54, blurRadius: 6)]),
+                    const SizedBox(height: 14),
+                    PixelPanel(
+                      frame: PixelFrame.plate,
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 8, vertical: 2),
+                      child: Text('Chapter 1: The Valley Awakens',
+                          style: pixelText(16, color: UiColors.gold)),
                     ),
-                    const SizedBox(height: 40),
+                    const SizedBox(height: 36),
                     if (_loading)
-                      const CircularProgressIndicator(color: Colors.white)
+                      const SizedBox(
+                        width: 36,
+                        height: 36,
+                        child: CircularProgressIndicator(color: UiColors.cream),
+                      )
                     else ...[
                       if (summary != null)
                         _MenuButton(
-                          icon: Icons.play_arrow,
+                          icon: 'flag',
                           label: 'Continue',
-                          detail: 'Day ${summary.day}  ·  Level ${summary.level}  ·  ${summary.progress}',
+                          detail:
+                              'Day ${summary.day}  ·  Level ${summary.level}  ·  ${summary.progress}',
+                          style: PixelButtonStyle.gold,
                           onPressed: _continue,
                         ),
                       const SizedBox(height: 12),
                       _MenuButton(
-                        icon: Icons.add,
+                        icon: 'star',
                         label: 'New game',
                         onPressed: _newGame,
                       ),
@@ -137,36 +194,43 @@ class _TitleScreenState extends State<TitleScreen> {
 }
 
 class _MenuButton extends StatelessWidget {
-  final IconData icon;
+  final String icon;
   final String label;
   final String? detail;
+  final PixelButtonStyle style;
   final VoidCallback onPressed;
 
-  const _MenuButton({required this.icon, required this.label, this.detail, required this.onPressed});
+  const _MenuButton({
+    required this.icon,
+    required this.label,
+    this.detail,
+    this.style = PixelButtonStyle.wood,
+    required this.onPressed,
+  });
 
   @override
   Widget build(BuildContext context) {
+    final color =
+        style == PixelButtonStyle.gold ? UiColors.ink : UiColors.cream;
     return SizedBox(
-      width: 280,
-      child: ElevatedButton(
+      width: 290,
+      child: PixelButton(
         onPressed: onPressed,
-        style: ElevatedButton.styleFrom(
-          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
-          backgroundColor: Colors.white.withValues(alpha: 0.92),
-          foregroundColor: const Color(0xFF3E2723),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-        ),
+        style: style,
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
         child: Row(
           children: [
-            Icon(icon, size: 28),
+            PixelIcon(icon, size: 28),
             const SizedBox(width: 12),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(label, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                  Text(label, style: pixelText(22, bold: true, color: color)),
                   if (detail != null)
-                    Text(detail!, style: const TextStyle(fontSize: 12), overflow: TextOverflow.ellipsis),
+                    Text(detail!,
+                        style: pixelText(13, color: color),
+                        overflow: TextOverflow.ellipsis),
                 ],
               ),
             ),
@@ -175,64 +239,4 @@ class _MenuButton extends StatelessWidget {
       ),
     );
   }
-}
-
-/// A sunset over rolling hills.
-class _ValleyPainter extends CustomPainter {
-  const _ValleyPainter();
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final rect = Offset.zero & size;
-    canvas.drawRect(
-      rect,
-      Paint()
-        ..shader = const LinearGradient(
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-          colors: [Color(0xFF2B3A67), Color(0xFF8E6C9E), Color(0xFFF4A261)],
-          stops: [0, 0.45, 0.75],
-        ).createShader(rect),
-    );
-
-    final sun = Offset(size.width * 0.78, size.height * 0.3);
-    canvas.drawCircle(
-      sun,
-      size.width * 0.16,
-      Paint()
-        ..shader = RadialGradient(
-          colors: [const Color(0xFFFFE08A).withValues(alpha: 0.5), Colors.transparent],
-        ).createShader(Rect.fromCircle(center: sun, radius: size.width * 0.16)),
-    );
-    canvas.drawCircle(sun, size.width * 0.08, Paint()..color = const Color(0xFFFFE08A));
-
-    void hill(double baseline, double amplitude, double phase, Color color) {
-      final path = Path()..moveTo(0, size.height);
-      for (double x = 0; x <= size.width; x += 4) {
-        final y = size.height * baseline + sin(x / size.width * 2 * pi + phase) * size.height * amplitude;
-        path.lineTo(x, y);
-      }
-      path
-        ..lineTo(size.width, size.height)
-        ..close();
-      canvas.drawPath(path, Paint()..color = color);
-    }
-
-    hill(0.66, 0.03, 0.5, const Color(0xFF5B7F4E));
-    hill(0.74, 0.04, 2.2, const Color(0xFF3F6B3A));
-    hill(0.84, 0.03, 4.0, const Color(0xFF2E5230));
-
-    // A few trees on the nearest hill.
-    final trunk = Paint()..color = const Color(0xFF4E342E);
-    final leaves = Paint()..color = const Color(0xFF1E3D22);
-    for (final fx in const [0.08, 0.16, 0.85, 0.92]) {
-      final x = size.width * fx;
-      final y = size.height * 0.84 + sin(fx * 2 * pi + 4.0) * size.height * 0.03;
-      canvas.drawRect(Rect.fromLTWH(x - 3, y - 14, 6, 16), trunk);
-      canvas.drawCircle(Offset(x, y - 22), 14, leaves);
-    }
-  }
-
-  @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }

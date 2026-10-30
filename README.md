@@ -146,7 +146,9 @@ lib/
 │   ├── palette.dart        # Colour ramps shared by all the art
 │   ├── terrain_art.dart    # Tiles and the overlays that blend them together
 │   ├── object_art.dart     # Trees, rocks, plants, fires, houses and more
-│   └── character_art.dart  # Villagers, the player and animals
+│   ├── character_art.dart  # Villagers, the player and animals
+│   ├── ui_art.dart         # Icons, frames, buttons and the title scene
+│   └── ui_textures.dart    # Interface images, generated once at startup
 ├── screens/
 │   ├── title_screen.dart   # Title screen with Continue / New game
 │   └── game_screen.dart    # Game loop, input and touch controls
@@ -156,7 +158,7 @@ lib/
 │   ├── hud_widget.dart     # HUD, inventory, crafting and pause menus
 │   ├── dialog_panel.dart   # Conversations, sleep prompt, chapter end
 │   ├── map_overlay.dart    # World map
-│   └── panel.dart          # Shared full-screen menu panel
+│   └── pixel_ui.dart       # Pixel-art panels, buttons, icons and bars
 └── utils/
     └── helpers.dart        # Helper functions
 ```
@@ -170,6 +172,11 @@ All the pixel art is drawn in code: no image files are needed. Textures are 16 p
 scaled up without smoothing, at a whole number of screen pixels per texture pixel, so they stay crisp on any
 phone. Colours come from the ramps in `palette.dart`; characters are drawn from small text templates in
 `character_art.dart`, where each letter stands for a colour.
+
+### Interface
+The interface is pixel art too: wooden and parchment frames, buttons and icons are drawn in `ui_art.dart` and
+sliced into nine so their borders stay sharp at any size. The reusable widgets (`PixelPanel`, `PixelButton`,
+`PixelIcon`, `PixelBar`, `PixelWindow`) live in `widgets/pixel_ui.dart`. Text uses the Pixelify Sans font.
 
 ### Adding New Features
 1. Add new tile types in `world.dart`, their texture in `terrain_art.dart` and their map colour in `tile_widget.dart`
@@ -197,3 +204,6 @@ MIT License
 
 ## Credits
 Created with Flutter and Dart.
+
+Interface font: [Pixelify Sans](https://github.com/eifetx/Pixelify-Sans), © 2021 The Pixelify Sans Project Authors, licensed under the
+SIL Open Font License 1.1 (see `assets/fonts/OFL.txt`).

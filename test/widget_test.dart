@@ -8,6 +8,7 @@ import 'package:serene_valley/models/game_state.dart';
 import 'package:serene_valley/screens/game_screen.dart';
 import 'package:serene_valley/screens/title_screen.dart';
 import 'package:serene_valley/services/save_service.dart';
+import 'package:serene_valley/widgets/pixel_ui.dart';
 
 const phones = {
   'small phone': Size(720, 1280), // 360x640 dp
@@ -47,7 +48,7 @@ void main() {
 
       // The action button talks to the elder, who offers the first quest.
       expect(find.text('Talk'), findsOneWidget);
-      await tester.tap(find.byType(FloatingActionButton));
+      await tester.tap(find.byKey(const ValueKey('action-button')));
       await frames(tester);
       expect(find.text('Elder Rowan'), findsOneWidget);
       await tester.tap(find.text('Accept'));
@@ -60,7 +61,7 @@ void main() {
         await tester.tap(find.byTooltip(label));
         await frames(tester, 2);
         expect(tester.takeException(), isNull, reason: label);
-        await tester.tap(find.widgetWithText(ElevatedButton, label == 'Pause' ? 'Resume' : 'Close'));
+        await tester.tap(find.widgetWithText(PixelButton, label == 'Pause' ? 'Resume' : 'Close'));
         await frames(tester, 2);
       }
 

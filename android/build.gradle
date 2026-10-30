@@ -15,10 +15,3 @@ allprojects {
         mavenCentral()
     }
 }
-
-rootProject.allprojects {
-    repositories {
-        google()
-        mavenCentral()
-    }
-}

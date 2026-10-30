@@ -1,30 +1,36 @@
 import 'dart:ui';
-import 'dart:math';
-import 'package:flutter/material.dart';
 
 class Player {
+  // Position of the player's centre, in tile units.
   Offset position;
+  // Movement speed in tiles per second.
   double speed;
   int health;
   int maxHealth;
-  int hunger;
+  double hunger;
   int maxHunger;
-  int energy;
+  double energy;
   int maxEnergy;
   String direction;
-  
+
   // Inventory
   Map<String, int> inventory;
   String selectedTool;
-  
+
   // Stats
   int level;
   int experience;
   int experienceToNextLevel;
 
+  // Accumulates time spent starving so damage is dealt once per interval.
+  double _starvationTimer = 0;
+
+  static const double baseSpeed = 4.0;
+  static const double tiredSpeed = 2.0;
+
   Player({
     required this.position,
-    this.speed = 2.0,
+    this.speed = baseSpeed,
     this.health = 100,
     this.maxHealth = 100,
     this.hunger = 100,
@@ -37,21 +43,22 @@ class Player {
     this.level = 1,
     this.experience = 0,
     this.experienceToNextLevel = 100,
-  }) : inventory = inventory ?? {
-    'wood': 0,
-    'stone': 0,
-    'apple': 0,
-    'berry': 0,
-    'fish': 0,
-    'axe': 1,
-    'pickaxe': 1,
-    'fishing_rod': 1,
-    'seeds': 0,
-  };
+  }) : inventory = inventory ??
+            {
+              'wood': 0,
+              'stone': 0,
+              'apple': 0,
+              'berry': 0,
+              'fish': 0,
+              'axe': 1,
+              'pickaxe': 1,
+              'fishing_rod': 1,
+              'seeds': 0,
+            };
 
-  void move(Offset delta) {
-    position += delta * speed;
-  }
+  bool get isDead => health <= 0;
+
+  int count(String item) => inventory[item] ?? 0;
 
   void updateDirection(String newDirection) {
     direction = newDirection;
@@ -66,20 +73,19 @@ class Player {
   }
 
   void consumeFood(String foodType, int hungerRestore, int healthRestore) {
-    if (inventory[foodType]! > 0) {
-      inventory[foodType] = inventory[foodType]! - 1;
-      hunger = (hunger + hungerRestore).clamp(0, maxHunger);
+    if (count(foodType) > 0) {
+      inventory[foodType] = count(foodType) - 1;
+      hunger = (hunger + hungerRestore).clamp(0, maxHunger.toDouble());
       heal(healthRestore);
     }
   }
 
-  void addItem(String item, int count) {
-    inventory[item] = (inventory[item] ?? 0) + count;
+  void addItem(String item, int amount) {
+    inventory[item] = count(item) + amount;
   }
 
-  void removeItem(String item, int count) {
-    inventory[item] = (inventory[item] ?? 0) - count;
-    if (inventory[item]! < 0) inventory[item] = 0;
+  void removeItem(String item, int amount) {
+    inventory[item] = (count(item) - amount).clamp(0, 1 << 30);
   }
 
   void addExperience(int amount) {
@@ -98,29 +104,37 @@ class Player {
       maxHunger = (maxHunger * 1.1).ceil();
       maxEnergy = (maxEnergy * 1.1).ceil();
       health = maxHealth;
-      hunger = maxHunger;
-      energy = maxEnergy;
+      hunger = maxHunger.toDouble();
+      energy = maxEnergy.toDouble();
     }
   }
 
-  void updateStats() {
-    // Decrease hunger over time
-    hunger = (hunger - 0.1).clamp(0.0, maxHunger.toDouble()).floor();
-    
-    // Decrease energy over time
-    energy = (energy - 0.05).clamp(0.0, maxEnergy.toDouble()).floor();
-    
-    // If hunger is too low, take damage
+  /// Advances survival stats by [dt] seconds.
+  void updateStats(double dt, {required bool moving}) {
+    // A full stomach lasts roughly eight minutes.
+    hunger = (hunger - 0.2 * dt).clamp(0, maxHunger.toDouble());
+
+    // Walking tires the player faster than standing still.
+    final drain = moving ? 0.4 : 0.05;
+    energy = (energy - drain * dt).clamp(0, maxEnergy.toDouble());
+
+    // Starving costs 1 health every 2 seconds.
     if (hunger <= 10) {
-      takeDamage(1);
-    }
-    
-    // If energy is too low, move slower
-    if (energy <= 20) {
-      speed = 1.0;
+      _starvationTimer += dt;
+      while (_starvationTimer >= 2) {
+        _starvationTimer -= 2;
+        takeDamage(1);
+      }
     } else {
-      speed = 2.0;
+      _starvationTimer = 0;
     }
+
+    speed = energy <= 20 ? tiredSpeed : baseSpeed;
+  }
+
+  void rest() {
+    energy = (energy + 10).clamp(0, maxEnergy.toDouble());
+    hunger = (hunger - 1).clamp(0, maxHunger.toDouble());
   }
 
   Player copy() {

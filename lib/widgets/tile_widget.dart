@@ -1,50 +1,21 @@
 import 'package:flutter/material.dart';
-import 'dart:math';
 
-class TileWidget extends StatelessWidget {
-  final String tileType;
-  final double tileSize;
-  final double lightLevel;
-
-  const TileWidget({
-    super.key,
-    required this.tileType,
-    required this.tileSize,
-    this.lightLevel = 1.0,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return SizedBox(
-      width: tileSize,
-      height: tileSize,
-      child: Container(
-        decoration: BoxDecoration(
-          color: _getTileColor(),
-          border: Border.all(
-            color: Colors.black.withOpacity(0.2),
-            width: 0.5,
-          ),
-        ),
-        child: _buildTileContent(),
-      ),
-    );
-  }
-
-  Color _getTileColor() {
+/// Colour palette for terrain tiles.
+class TileColors {
+  static Color of(String tileType) {
     switch (tileType) {
       case 'grass':
-        return const Color(0xFF7CFC00);
+        return const Color(0xFF7CC243);
       case 'dirt':
-        return const Color(0xFF8B4513);
+        return const Color(0xFF8B5A2B);
       case 'sand':
-        return const Color(0xFFFFD700);
+        return const Color(0xFFE8CF7A);
       case 'stone':
         return const Color(0xFF808080);
       case 'water':
-        return Colors.blue;
+        return const Color(0xFF3A7BD5);
       case 'forest_grass':
-        return const Color(0xFF228B22);
+        return const Color(0xFF3E8E2F);
       case 'wood_floor':
         return const Color(0xFFCD853F);
       case 'wood_wall':
@@ -52,78 +23,14 @@ class TileWidget extends StatelessWidget {
       case 'void':
         return Colors.black;
       default:
-        return const Color(0xFF7CFC00);
+        return const Color(0xFF7CC243);
     }
   }
 
-  Widget _buildTileContent() {
-    switch (tileType) {
-      case 'grass':
-        return _buildGrassTile();
-      case 'forest_grass':
-        return _buildForestGrassTile();
-      case 'water':
-        return _buildWaterTile();
-      case 'sand':
-        return _buildSandTile();
-      case 'stone':
-        return _buildStoneTile();
-      case 'dirt':
-        return _buildDirtTile();
-      case 'wood_floor':
-        return _buildWoodFloorTile();
-      case 'wood_wall':
-        return _buildWoodWallTile();
-      default:
-        return Container();
-    }
-  }
-
-  Widget _buildGrassTile() {
-    return Container(
-      color: const Color(0xFF7CFC00),
-    );
-  }
-
-  Widget _buildForestGrassTile() {
-    return Container(
-      color: const Color(0xFF228B22),
-    );
-  }
-
-  Widget _buildWaterTile() {
-    return Container(
-      color: Colors.blue,
-    );
-  }
-
-  Widget _buildSandTile() {
-    return Container(
-      color: const Color(0xFFFFD700),
-    );
-  }
-
-  Widget _buildStoneTile() {
-    return Container(
-      color: const Color(0xFF808080),
-    );
-  }
-
-  Widget _buildDirtTile() {
-    return Container(
-      color: const Color(0xFF8B4513),
-    );
-  }
-
-  Widget _buildWoodFloorTile() {
-    return Container(
-      color: const Color(0xFFCD853F),
-    );
-  }
-
-  Widget _buildWoodWallTile() {
-    return Container(
-      color: const Color(0xFFA0522D),
-    );
+  /// Deterministic per-tile shade so large fields don't look flat.
+  static Color shaded(String tileType, int x, int y) {
+    final hash = ((x * 73856093) ^ (y * 19349663)) & 0xFF;
+    final amount = (hash / 255.0) * 0.08;
+    return Color.lerp(of(tileType), Colors.black, amount)!;
   }
 }

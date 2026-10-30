@@ -1,10 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart';
 import 'package:flutter/services.dart';
-import '../models/player.dart';
-import '../models/world.dart';
 import '../models/game_state.dart';
 import '../widgets/world_widget.dart';
-import '../widgets/player_widget.dart';
 import '../widgets/hud_widget.dart';
 
 class GameScreen extends StatefulWidget {
@@ -16,328 +14,242 @@ class GameScreen extends StatefulWidget {
 
 class _GameScreenState extends State<GameScreen> with SingleTickerProviderStateMixin {
   late GameState gameState;
-  late AnimationController _animationController;
-  
-  // Input state
-  final Set<LogicalKeyboardKey> _pressedKeys = {};
-  Offset _lastTouchPosition = Offset.zero;
-  bool _isTouching = false;
-  
-  // Joystick
-  Offset _joystickPosition = Offset.zero;
-  bool _showJoystick = false;
+  late Ticker _ticker;
+  Duration _lastTick = Duration.zero;
+
+  // Movement from the on-screen joystick, each axis in -1..1.
+  Offset _joystickInput = Offset.zero;
+
+  static const double tileSize = 16.0;
 
   @override
   void initState() {
     super.initState();
-    
-    // Initialize game state
+
     gameState = GameState();
-    
-    // Animation controller for game loop
-    _animationController = AnimationController(
-      vsync: this,
-      duration: const Duration(days: 1),
-    );
-    
-    _animationController.addListener(_gameLoop);
-    _animationController.forward();
-    
-    // Listen to keyboard
-    RawKeyboard.instance.addListener(_handleKeyEvent);
-    
-    // Listen to game state changes
-    gameState.addListener(() {
-      if (mounted) setState(() {});
-    });
+
+    // Game loop: runs once per frame with the real elapsed time.
+    _ticker = createTicker(_gameLoop)..start();
+
+    HardwareKeyboard.instance.addHandler(_handleKeyEvent);
   }
 
   @override
   void dispose() {
-    _animationController.dispose();
-    RawKeyboard.instance.removeListener(_handleKeyEvent);
+    _ticker.dispose();
+    HardwareKeyboard.instance.removeHandler(_handleKeyEvent);
     gameState.dispose();
     super.dispose();
   }
 
-  void _gameLoop() {
-    if (!_animationController.isAnimating) return;
-    
-    // Calculate delta time
-    double deltaTime = _animationController.lastElapsedDuration!.inMilliseconds.toDouble();
-    
-    // Update game state
-    gameState.update(deltaTime);
-    
-    // Handle keyboard input
-    _handleKeyboardInput();
+  void _gameLoop(Duration elapsed) {
+    // Clamp so a long pause (e.g. app in background) doesn't cause a jump.
+    final dt = ((elapsed - _lastTick).inMicroseconds / 1e6).clamp(0.0, 0.1);
+    _lastTick = elapsed;
+
+    gameState.moveInput = _joystickInput != Offset.zero ? _joystickInput : _keyboardInput();
+    gameState.update(dt);
   }
 
-  void _handleKeyEvent(RawKeyEvent event) {
-    if (event is RawKeyDownEvent) {
-      _pressedKeys.add(event.logicalKey);
-    } else if (event is RawKeyUpEvent) {
-      _pressedKeys.remove(event.logicalKey);
+  bool _handleKeyEvent(KeyEvent event) {
+    if (event is! KeyDownEvent) return false;
+    final key = event.logicalKey;
+
+    if (key == LogicalKeyboardKey.keyE) {
+      gameState.interact();
+    } else if (key == LogicalKeyboardKey.keyI) {
+      gameState.toggleInventory();
+    } else if (key == LogicalKeyboardKey.keyC) {
+      gameState.toggleCrafting();
+    } else if (key == LogicalKeyboardKey.keyM) {
+      gameState.toggleMap();
+    } else if (key == LogicalKeyboardKey.escape) {
+      gameState.togglePause();
+    } else if (key == LogicalKeyboardKey.space) {
+      gameState.rest();
+    } else {
+      // Number keys 1-5 for quick tool selection.
+      const tools = ['axe', 'pickaxe', 'fishing_rod', 'stick', 'wooden_sword'];
+      const digits = [
+        LogicalKeyboardKey.digit1,
+        LogicalKeyboardKey.digit2,
+        LogicalKeyboardKey.digit3,
+        LogicalKeyboardKey.digit4,
+        LogicalKeyboardKey.digit5,
+      ];
+      final index = digits.indexOf(key);
+      if (index == -1) return false;
+      gameState.selectTool(tools[index]);
     }
-    
-    // Handle special keys
-    if (event is RawKeyDownEvent) {
-      if (event.logicalKey == LogicalKeyboardKey.keyE) {
-        gameState.interact();
-      } else if (event.logicalKey == LogicalKeyboardKey.keyI) {
-        gameState.toggleInventory();
-      } else if (event.logicalKey == LogicalKeyboardKey.keyC) {
-        gameState.toggleCrafting();
-      } else if (event.logicalKey == LogicalKeyboardKey.keyM) {
-        gameState.toggleMap();
-      } else if (event.logicalKey == LogicalKeyboardKey.escape) {
-        gameState.togglePause();
-      } else if (event.logicalKey == LogicalKeyboardKey.space) {
-        gameState.rest();
-      }
-      
-      // Number keys for quick tool selection
-      if (event.logicalKey.keyId >= 49 && event.logicalKey.keyId <= 57) {
-        // Keys 1-9
-        int index = event.logicalKey.keyId - 49;
-        List<String> tools = ['axe', 'pickaxe', 'fishing_rod', 'stick', 'wooden_sword'];
-        if (index < tools.length) {
-          gameState.selectTool(tools[index]);
-        }
-      }
-    }
+    return true;
   }
 
-  void _handleKeyboardInput() {
-    Offset movement = Offset.zero;
-    
-    if (_pressedKeys.contains(LogicalKeyboardKey.arrowUp) ||
-        _pressedKeys.contains(LogicalKeyboardKey.keyW)) {
-      movement += const Offset(0, -1);
-    }
-    if (_pressedKeys.contains(LogicalKeyboardKey.arrowDown) ||
-        _pressedKeys.contains(LogicalKeyboardKey.keyS)) {
-      movement += const Offset(0, 1);
-    }
-    if (_pressedKeys.contains(LogicalKeyboardKey.arrowLeft) ||
-        _pressedKeys.contains(LogicalKeyboardKey.keyA)) {
-      movement += const Offset(-1, 0);
-    }
-    if (_pressedKeys.contains(LogicalKeyboardKey.arrowRight) ||
-        _pressedKeys.contains(LogicalKeyboardKey.keyD)) {
-      movement += const Offset(1, 0);
-    }
-    
-    // Normalize diagonal movement
-    if (movement != Offset.zero) {
-      movement = Offset(movement.dx / movement.distance, movement.dy / movement.distance);
-    }
-    
-    // Apply movement
-    if (movement != Offset.zero) {
-      gameState.movePlayer(movement);
-    }
+  Offset _keyboardInput() {
+    final pressed = HardwareKeyboard.instance.logicalKeysPressed;
+    bool any(List<LogicalKeyboardKey> keys) => keys.any(pressed.contains);
+
+    double dx = 0, dy = 0;
+    if (any([LogicalKeyboardKey.arrowUp, LogicalKeyboardKey.keyW])) dy -= 1;
+    if (any([LogicalKeyboardKey.arrowDown, LogicalKeyboardKey.keyS])) dy += 1;
+    if (any([LogicalKeyboardKey.arrowLeft, LogicalKeyboardKey.keyA])) dx -= 1;
+    if (any([LogicalKeyboardKey.arrowRight, LogicalKeyboardKey.keyD])) dx += 1;
+    return Offset(dx, dy);
   }
 
   @override
   Widget build(BuildContext context) {
-    // Calculate tile size based on screen
-    double screenWidth = MediaQuery.of(context).size.width;
-    double screenHeight = MediaQuery.of(context).size.height;
-    double tileSize = 16.0;
-    
+    final bottomInset = MediaQuery.of(context).padding.bottom;
+    // Keep touch controls above the bottom control bar.
+    final controlsBottom = bottomInset + 72;
+
     return Scaffold(
-      body: Focus(
-        autofocus: true,
-        onKey: (node, event) {
-          if (event is RawKeyDownEvent) {
-            _pressedKeys.add(event.logicalKey);
-          } else if (event is RawKeyUpEvent) {
-            _pressedKeys.remove(event.logicalKey);
-          }
-          return KeyEventResult.handled;
-        },
-        child: GestureDetector(
-          onTapDown: _handleTapDown,
-          onTapUp: _handleTapUp,
-          onPanStart: _handlePanStart,
-          onPanUpdate: _handlePanUpdate,
-          onPanEnd: _handlePanEnd,
-          child: Stack(
-            children: [
-              // Game world
-              Transform.translate(
-                offset: -gameState.cameraOffset,
-                child: Transform.scale(
-                  scale: gameState.cameraZoom,
-                  child: SizedBox(
-                    width: gameState.world.width * tileSize,
-                    height: gameState.world.height * tileSize,
-                    child: Stack(
-                      children: [
-                        WorldWidget(
-                          world: gameState.world,
-                          gameState: gameState,
-                          tileSize: tileSize,
-                        ),
-                        PlayerWidget(
-                          player: gameState.player,
-                          tileSize: tileSize,
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-              
-              // HUD
-              HUDWidget(
-                player: gameState.player,
-                gameState: gameState,
-                onToolSelected: gameState.selectTool,
-                onFoodEaten: gameState.eatFood,
-                onInventoryToggle: gameState.toggleInventory,
-                onCraftingToggle: gameState.toggleCrafting,
-                onMapToggle: gameState.toggleMap,
-              ),
-              
-              // Touch controls (for mobile)
-              if (_showJoystick)
-                Positioned(
-                  left: 20,
-                  bottom: 100,
-                  child: _buildJoystick(),
-                ),
-              
-              // Interaction button (for mobile)
-              if (_showJoystick)
-                Positioned(
-                  right: 20,
-                  bottom: 100,
-                  child: FloatingActionButton(
-                    onPressed: gameState.interact,
-                    child: const Icon(Icons.touch_app),
-                  ),
-                ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  void _handleTapDown(TapDownDetails details) {
-    _lastTouchPosition = details.globalPosition;
-    _isTouching = true;
-    
-    // Check if touch is in the left half of the screen
-    if (details.globalPosition.dx < MediaQuery.of(context).size.width / 2) {
-      _showJoystick = true;
-    }
-    
-    setState(() {});
-  }
-
-  void _handleTapUp(TapUpDetails details) {
-    _isTouching = false;
-    _joystickPosition = Offset.zero;
-    
-    // Hide joystick after a delay
-    Future.delayed(const Duration(milliseconds: 100), () {
-      _showJoystick = false;
-      if (mounted) setState(() {});
-    });
-  }
-
-  void _handlePanStart(DragStartDetails details) {
-    _lastTouchPosition = details.globalPosition;
-    _isTouching = true;
-    
-    if (details.globalPosition.dx < MediaQuery.of(context).size.width / 2) {
-      _showJoystick = true;
-    }
-  }
-
-  void _handlePanUpdate(DragUpdateDetails details) {
-    if (!_isTouching) return;
-    
-    Offset currentPosition = details.globalPosition;
-    Offset delta = currentPosition - _lastTouchPosition;
-    _lastTouchPosition = currentPosition;
-    
-    // Update joystick
-    if (_showJoystick) {
-      _joystickPosition += delta;
-      
-      // Clamp joystick position
-      double maxDistance = 50;
-      double distance = _joystickPosition.distance;
-      if (distance > maxDistance) {
-        _joystickPosition = Offset.fromDirection(
-          _joystickPosition.direction,
-          maxDistance,
-        );
-      }
-      
-      // Move player based on joystick
-      if (distance > 10) {
-        Offset direction = Offset(
-          _joystickPosition.dx / distance,
-          _joystickPosition.dy / distance,
-        );
-        gameState.movePlayer(direction);
-      }
-    }
-    
-    setState(() {});
-  }
-
-  void _handlePanEnd(DragEndDetails details) {
-    _isTouching = false;
-    _joystickPosition = Offset.zero;
-    
-    Future.delayed(const Duration(milliseconds: 100), () {
-      _showJoystick = false;
-      if (mounted) setState(() {});
-    });
-  }
-
-  Widget _buildJoystick() {
-    return Container(
-      width: 100,
-      height: 100,
-      decoration: BoxDecoration(
-        color: Colors.grey[800],
-        shape: BoxShape.circle,
-      ),
-      child: Stack(
+      backgroundColor: const Color(0xFF1a1a2e),
+      body: Stack(
         children: [
-          // Joystick base
-          Center(
-            child: Container(
-              width: 60,
-              height: 60,
-              decoration: BoxDecoration(
-                color: Colors.grey[600],
-                shape: BoxShape.circle,
-              ),
-            ),
+          // Game world
+          Positioned.fill(
+            child: WorldWidget(gameState: gameState, tileSize: tileSize),
           ),
-          // Joystick handle
-          Center(
-            child: Transform.translate(
-              offset: _joystickPosition,
-              child: Container(
-                width: 30,
-                height: 30,
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  shape: BoxShape.circle,
-                ),
+
+          // HUD and touch controls rebuild whenever the game state changes.
+          Positioned.fill(
+            child: ListenableBuilder(
+              listenable: gameState,
+              builder: (context, _) => Stack(
+                children: [
+                  if (!gameState.isMenuOpen) ...[
+                    Positioned(
+                      left: 24,
+                      bottom: controlsBottom,
+                      child: Joystick(
+                        onChanged: (input) => _joystickInput = input,
+                      ),
+                    ),
+                    Positioned(
+                      right: 24,
+                      bottom: controlsBottom + 24,
+                      child: _buildActionButton(),
+                    ),
+                  ],
+                  HUDWidget(
+                    player: gameState.player,
+                    gameState: gameState,
+                    onToolSelected: gameState.selectTool,
+                    onFoodEaten: gameState.eatFood,
+                    onInventoryToggle: gameState.toggleInventory,
+                    onCraftingToggle: gameState.toggleCrafting,
+                    onMapToggle: gameState.toggleMap,
+                  ),
+                ],
               ),
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildActionButton() {
+    const icons = {
+      'tree': Icons.forest,
+      'rock': Icons.landscape,
+      'water': Icons.phishing,
+      'berry_bush': Icons.spa,
+      'animal': Icons.pets,
+      'village': Icons.house,
+    };
+    final target = gameState.interactionTarget;
+    final active = target != 'none';
+
+    return SizedBox(
+      width: 72,
+      height: 72,
+      child: FloatingActionButton(
+        heroTag: null,
+        shape: const CircleBorder(),
+        backgroundColor: active ? Colors.amber : Colors.grey.withValues(alpha: 0.6),
+        onPressed: gameState.interact,
+        child: Icon(icons[target] ?? Icons.touch_app, size: 32),
+      ),
+    );
+  }
+}
+
+/// Virtual thumbstick. Reports the stick position as an offset whose
+/// components are in -1..1, or [Offset.zero] when released.
+class Joystick extends StatefulWidget {
+  final ValueChanged<Offset> onChanged;
+  final double size;
+
+  const Joystick({super.key, required this.onChanged, this.size = 130});
+
+  @override
+  State<Joystick> createState() => _JoystickState();
+}
+
+class _JoystickState extends State<Joystick> {
+  Offset _knob = Offset.zero;
+
+  double get _radius => widget.size / 2 - 20;
+
+  void _update(Offset localPosition) {
+    final centre = Offset(widget.size / 2, widget.size / 2);
+    var delta = localPosition - centre;
+    if (delta.distance > _radius) {
+      delta = Offset.fromDirection(delta.direction, _radius);
+    }
+    setState(() => _knob = delta);
+
+    final input = delta / _radius;
+    // Small dead zone so a resting thumb doesn't drift.
+    widget.onChanged(input.distance < 0.15 ? Offset.zero : input);
+  }
+
+  void _release() {
+    setState(() => _knob = Offset.zero);
+    widget.onChanged(Offset.zero);
+  }
+
+  @override
+  void dispose() {
+    widget.onChanged(Offset.zero);
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onPanStart: (d) => _update(d.localPosition),
+      onPanUpdate: (d) => _update(d.localPosition),
+      onPanEnd: (_) => _release(),
+      onPanCancel: _release,
+      child: SizedBox(
+        width: widget.size,
+        height: widget.size,
+        child: Stack(
+          alignment: Alignment.center,
+          children: [
+            Container(
+              decoration: BoxDecoration(
+                color: Colors.black.withValues(alpha: 0.3),
+                shape: BoxShape.circle,
+                border: Border.all(color: Colors.white.withValues(alpha: 0.5), width: 2),
+              ),
+            ),
+            Transform.translate(
+              offset: _knob,
+              child: Container(
+                width: 48,
+                height: 48,
+                decoration: BoxDecoration(
+                  color: Colors.white.withValues(alpha: 0.85),
+                  shape: BoxShape.circle,
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

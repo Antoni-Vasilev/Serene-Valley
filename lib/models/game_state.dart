@@ -6,30 +6,38 @@ import 'world.dart';
 class GameState with ChangeNotifier {
   Player player;
   World world;
-  
+
   // Game state
   bool isPaused;
   bool showInventory;
   bool showCrafting;
   bool showMap;
   String currentAction;
-  
-  // Camera
+
+  // Camera: the world position (in tiles) shown at the centre of the screen.
   Offset cameraOffset;
   double cameraZoom;
-  
+
+  // Movement requested by the controls, each axis in -1..1.
+  Offset moveInput = Offset.zero;
+  bool isMoving = false;
+  // Seconds spent walking; drives the walk animation.
+  double walkTime = 0;
+
   // Interaction
-  Offset? selectedTile;
   String interactionTarget;
-  
+  String? _interactionKey;
+  String? get interactionKey => _interactionKey;
+
   // Random instance
   final Random _random = Random();
+  int _actionMessageId = 0;
 
   GameState({
     Offset? playerStart,
     int? worldSeed,
-  }) : player = Player(
-          position: playerStart ?? const Offset(50, 50),
+  })  : player = Player(
+          position: playerStart ?? const Offset(50.5, 50.5),
         ),
         world = World(seed: worldSeed),
         isPaused = false,
@@ -42,217 +50,211 @@ class GameState with ChangeNotifier {
         interactionTarget = 'none' {
     world.generate();
     if (playerStart == null) {
-      player.position = world.playerSpawn;
+      player.position = world.playerSpawn + const Offset(0.5, 0.5);
     }
-    cameraOffset = Offset(
-      player.position.dx - 8,
-      player.position.dy - 6,
-    );
+    cameraOffset = player.position;
   }
 
-  void update(double deltaTime) {
+  bool get isMenuOpen => showInventory || showCrafting || showMap || isPaused;
+
+  /// Advances the simulation by [dt] seconds.
+  void update(double dt) {
     if (isPaused) return;
-    
-    // Update world time
-    world.updateTime(deltaTime);
-    
-    // Update player stats
-    player.updateStats();
-    
-    // Check for interactions
+
+    world.updateTime(dt);
+
+    isMoving = moveInput != Offset.zero && !isMenuOpen;
+    if (isMoving) {
+      _movePlayer(moveInput, dt);
+      walkTime += dt;
+    }
+
+    player.updateStats(dt, moving: isMoving);
+    if (player.isDead) {
+      _respawn();
+    }
+
     _checkInteractions();
-    
-    // Update camera
-    _updateCamera();
-    
+    _updateCamera(dt);
+
     notifyListeners();
   }
 
-  void movePlayer(Offset direction) {
-    if (isPaused) return;
-    
-    Offset newPosition = Offset(
-      player.position.dx + direction.dx,
-      player.position.dy + direction.dy,
-    );
-    
-    // Check collision
-    int tileX = newPosition.dx.floor();
-    int tileY = newPosition.dy.floor();
-    
-    String tile = world.getTileAt(tileX, tileY);
-    String object = world.getObjectAt(tileX, tileY);
-    
-    // Can't walk through water without a bridge
-    if (tile == 'water' && player.selectedTool != 'boat') {
-      return;
+  void _movePlayer(Offset direction, double dt) {
+    if (direction.distance > 1) {
+      direction = direction / direction.distance;
     }
-    
-    // Can't walk through walls
-    if (tile == 'wood_wall' || tile == 'stone') {
-      return;
+    final step = direction * player.speed * dt;
+
+    // Resolve each axis separately so the player slides along walls.
+    final pos = player.position;
+    final nextX = Offset(pos.dx + step.dx, pos.dy);
+    if (_canStandAt(nextX)) player.position = nextX;
+    final nextY = Offset(player.position.dx, pos.dy + step.dy);
+    if (_canStandAt(nextY)) player.position = nextY;
+
+    if (direction.dx.abs() > direction.dy.abs()) {
+      player.updateDirection(direction.dx > 0 ? 'right' : 'left');
+    } else {
+      player.updateDirection(direction.dy > 0 ? 'down' : 'up');
     }
-    
-    player.move(direction);
-    
-    // Update direction
-    if (direction.dx > 0) {
-      player.updateDirection('right');
-    } else if (direction.dx < 0) {
-      player.updateDirection('left');
-    } else if (direction.dy > 0) {
-      player.updateDirection('down');
-    } else if (direction.dy < 0) {
-      player.updateDirection('up');
-    }
-    
-    // Small energy cost for moving
-    player.energy = (player.energy - 0.05).clamp(0, player.maxEnergy).floor();
   }
 
-  void _updateCamera() {
-    Offset targetOffset = Offset(
-      player.position.dx - 8,
-      player.position.dy - 6,
-    );
-    
-    cameraOffset = Offset.lerp(
-      cameraOffset,
-      targetOffset,
-      0.1,
-    )!;
+  bool _canStandAt(Offset p) {
+    // Check the corners of a slightly smaller-than-tile hitbox.
+    const r = 0.3;
+    for (final c in [
+      Offset(p.dx - r, p.dy - r),
+      Offset(p.dx + r, p.dy - r),
+      Offset(p.dx - r, p.dy + r),
+      Offset(p.dx + r, p.dy + r),
+    ]) {
+      if (!world.isWalkable(c.dx.floor(), c.dy.floor())) return false;
+    }
+    return true;
+  }
+
+  void _updateCamera(double dt) {
+    // Frame-rate independent smoothing.
+    final t = 1 - pow(0.001, dt).toDouble();
+    cameraOffset = Offset.lerp(cameraOffset, player.position, t)!;
+  }
+
+  /// Finds the key of the closest entry in [items] within reach of the player.
+  String? _nearest(Map<String, Offset> items, {String prefix = ''}) {
+    String? best;
+    double bestDist = 1.3;
+    for (final entry in items.entries) {
+      if (!entry.key.startsWith(prefix)) continue;
+      final centre = entry.value + const Offset(0.5, 0.5);
+      final d = (centre - player.position).distance;
+      if (d < bestDist) {
+        bestDist = d;
+        best = entry.key;
+      }
+    }
+    return best;
+  }
+
+  bool _isNextToWater() {
+    final px = player.position.dx.floor();
+    final py = player.position.dy.floor();
+    for (int dy = -1; dy <= 1; dy++) {
+      for (int dx = -1; dx <= 1; dx++) {
+        if (world.getTileAt(px + dx, py + dy) == 'water') return true;
+      }
+    }
+    return false;
   }
 
   void _checkInteractions() {
-    int tileX = player.position.dx.floor();
-    int tileY = player.position.dy.floor();
-    
-    // Check for trees
-    for (var entry in world.trees.entries) {
-      if (entry.value.dx.floor() == tileX && entry.value.dy.floor() == tileY) {
-        interactionTarget = 'tree';
-        return;
-      }
+    String? key;
+    if ((key = _nearest(world.trees)) != null) {
+      interactionTarget = 'tree';
+    } else if ((key = _nearest(world.rocks)) != null) {
+      interactionTarget = 'rock';
+    } else if ((key = _nearest(world.plants, prefix: 'berry_bush')) != null) {
+      interactionTarget = 'berry_bush';
+    } else if ((key = _nearest(world.animals)) != null) {
+      interactionTarget = 'animal';
+    } else if (_isNextToWater()) {
+      interactionTarget = 'water';
+    } else if (world.villageLocations
+        .any((l) => (l - player.position).distance <= 4)) {
+      interactionTarget = 'village';
+    } else {
+      interactionTarget = 'none';
     }
-    
-    // Check for rocks
-    for (var entry in world.rocks.entries) {
-      if (entry.value.dx.floor() == tileX && entry.value.dy.floor() == tileY) {
-        interactionTarget = 'rock';
-        return;
-      }
-    }
-    
-    // Check for water
-    for (var entry in world.water.entries) {
-      if (entry.value.dx.floor() == tileX && entry.value.dy.floor() == tileY) {
-        interactionTarget = 'water';
-        return;
-      }
-    }
-    
-    // Check for plants
-    for (var entry in world.plants.entries) {
-      if (entry.value.dx.floor() == tileX && entry.value.dy.floor() == tileY) {
-        interactionTarget = 'berry_bush';
-        return;
-      }
-    }
-    
-    // Check for animals
-    for (var entry in world.animals.entries) {
-      if (entry.value.dx.floor() == tileX && entry.value.dy.floor() == tileY) {
-        interactionTarget = 'animal';
-        return;
-      }
-    }
-    
-    // Check for village
-    for (var location in world.villageLocations) {
-      if ((location - player.position).distance <= 3) {
-        interactionTarget = 'village';
-        return;
-      }
-    }
-    
-    interactionTarget = 'none';
+    _interactionKey = key;
   }
 
   void interact() {
     if (isPaused) return;
-    
-    int tileX = player.position.dx.floor();
-    int tileY = player.position.dy.floor();
-    
+    final key = _interactionKey;
+
     switch (interactionTarget) {
       case 'tree':
         if (player.selectedTool == 'axe' || player.selectedTool == 'none') {
-          // Find and remove the tree
-          String treeKey = 'tree_${tileX}_${tileY}';
-          if (world.trees.containsKey(treeKey)) {
-            world.trees.remove(treeKey);
-            player.addItem('wood', 3);
-            player.addExperience(5);
-            currentAction = 'Chopped tree! +3 Wood';
-          }
+          world.trees.remove(key);
+          player.addItem('wood', 3);
+          if (_random.nextDouble() < 0.3) player.addItem('apple', 1);
+          player.addExperience(5);
+          _showAction('Chopped tree! +3 Wood');
+        } else {
+          _showAction('Use an axe to chop trees');
         }
         break;
-        
+
       case 'rock':
         if (player.selectedTool == 'pickaxe' || player.selectedTool == 'none') {
-          String rockKey = 'rock_${tileX}_${tileY}';
-          if (world.rocks.containsKey(rockKey)) {
-            world.rocks.remove(rockKey);
-            player.addItem('stone', 2);
-            player.addExperience(5);
-            currentAction = 'Mined rock! +2 Stone';
-          }
+          world.rocks.remove(key);
+          player.addItem('stone', 2);
+          player.addExperience(5);
+          _showAction('Mined rock! +2 Stone');
+        } else {
+          _showAction('Use a pickaxe to mine rocks');
         }
         break;
-        
+
       case 'water':
         if (player.selectedTool == 'fishing_rod') {
           if (_random.nextDouble() < 0.3) {
             player.addItem('fish', 1);
             player.addExperience(10);
-            currentAction = 'Caught a fish!';
+            _showAction('Caught a fish!');
           } else {
-            currentAction = 'Nothing caught...';
+            _showAction('Nothing caught...');
           }
+        } else {
+          _showAction('Select the fishing rod to fish');
         }
         break;
-        
+
       case 'berry_bush':
-        String plantKey = 'berry_bush_${tileX}_${tileY}';
-        if (world.plants.containsKey(plantKey)) {
-          world.plants.remove(plantKey);
-          player.addItem('berry', 2);
-          player.addExperience(3);
-          currentAction = 'Picked berries! +2 Berries';
-        }
+        world.plants.remove(key);
+        player.addItem('berry', 2);
+        player.addExperience(3);
+        _showAction('Picked berries! +2 Berries');
         break;
-        
+
       case 'animal':
-        currentAction = 'The animal ran away!';
+        world.animals.remove(key);
+        _showAction('The animal ran away!');
         break;
-        
+
       case 'village':
-        currentAction = 'Welcome to the village!';
+        _showAction('Welcome to the village!');
         break;
-        
+
       default:
-        currentAction = 'Nothing to interact with';
+        _showAction('Nothing to interact with');
     }
-    
+    notifyListeners();
+  }
+
+  void _showAction(String message) {
+    currentAction = message;
+    final id = ++_actionMessageId;
     Future.delayed(const Duration(seconds: 2), () {
-      currentAction = 'none';
-      notifyListeners();
+      // Only clear if no newer message replaced this one.
+      if (id == _actionMessageId) {
+        currentAction = 'none';
+        notifyListeners();
+      }
     });
   }
 
+  void _respawn() {
+    player.health = (player.maxHealth / 2).ceil();
+    player.hunger = player.maxHunger / 2;
+    player.energy = player.maxEnergy / 2;
+    player.position = world.playerSpawn + const Offset(0.5, 0.5);
+    _showAction('You fainted and woke up in the village...');
+  }
+
   void selectTool(String tool) {
-    if (player.inventory[tool]! > 0) {
-      player.selectedTool = tool;
+    if (player.count(tool) > 0) {
+      player.selectedTool = player.selectedTool == tool ? 'none' : tool;
       showInventory = false;
       notifyListeners();
     }
@@ -301,35 +303,36 @@ class GameState with ChangeNotifier {
   }
 
   void craftItem(String recipe) {
+    final inv = player;
     switch (recipe) {
       case 'stick':
-        if (player.inventory['wood']! >= 1) {
+        if (inv.count('wood') >= 1) {
           player.removeItem('wood', 1);
           player.addItem('stick', 1);
           player.addExperience(2);
         }
         break;
-        
+
       case 'wooden_sword':
-        if (player.inventory['wood']! >= 2 && player.inventory['stick']! >= 1) {
+        if (inv.count('wood') >= 2 && inv.count('stick') >= 1) {
           player.removeItem('wood', 2);
           player.removeItem('stick', 1);
           player.addItem('wooden_sword', 1);
           player.addExperience(10);
         }
         break;
-        
+
       case 'campfire':
-        if (player.inventory['wood']! >= 5 && player.inventory['stone']! >= 3) {
+        if (inv.count('wood') >= 5 && inv.count('stone') >= 3) {
           player.removeItem('wood', 5);
           player.removeItem('stone', 3);
           player.addItem('campfire', 1);
           player.addExperience(15);
         }
         break;
-        
+
       case 'fishing_rod':
-        if (player.inventory['stick']! >= 2 && player.inventory['wood']! >= 1) {
+        if (inv.count('stick') >= 2 && inv.count('wood') >= 1) {
           player.removeItem('stick', 2);
           player.removeItem('wood', 1);
           player.addItem('fishing_rod', 1);
@@ -337,17 +340,18 @@ class GameState with ChangeNotifier {
         }
         break;
     }
-    
+
     showCrafting = false;
     notifyListeners();
   }
 
   void rest() {
-    player.energy = (player.energy + 1).clamp(0, player.maxEnergy);
-    player.hunger = (player.hunger - 0.1).clamp(0, player.maxHunger);
-    
-    if (player.hunger > 50 && _random.nextDouble() < 0.01) {
+    if (isPaused) return;
+    player.rest();
+    if (player.hunger > 50 && _random.nextDouble() < 0.3) {
       player.heal(1);
     }
+    _showAction('Rested. +10 Energy');
+    notifyListeners();
   }
 }

@@ -25,30 +25,45 @@ class HUDWidget extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Column(
+    return Stack(
       children: [
         // Top bar - stats
-        _buildStatsBar(context),
-        
+        Positioned(
+          top: 0,
+          left: 0,
+          right: 0,
+          child: SafeArea(bottom: false, child: _buildStatsBar(context)),
+        ),
+
         // Action message
         if (gameState.currentAction != 'none')
-          _buildActionMessage(),
-        
+          Positioned(
+            top: 0,
+            left: 16,
+            right: 16,
+            child: SafeArea(child: Center(child: _buildActionMessage())),
+          ),
+
         // Bottom bar - controls
-        _buildControlBar(context),
-        
+        Positioned(
+          left: 0,
+          right: 0,
+          bottom: 0,
+          child: SafeArea(top: false, child: _buildControlBar(context)),
+        ),
+
         // Inventory overlay
         if (gameState.showInventory)
           _buildInventoryOverlay(context),
-        
+
         // Crafting overlay
         if (gameState.showCrafting)
           _buildCraftingOverlay(context),
-        
+
         // Map overlay
         if (gameState.showMap)
           _buildMapOverlay(context),
-        
+
         // Pause menu
         if (gameState.isPaused)
           _buildPauseMenu(context),
@@ -56,72 +71,72 @@ class HUDWidget extends StatelessWidget {
     );
   }
 
+  /// Full-screen panel that stays clear of notches and system bars.
+  Widget _overlay(Widget child) {
+    return Positioned.fill(
+      child: ColoredBox(
+        color: Colors.black,
+        child: SafeArea(child: child),
+      ),
+    );
+  }
+
   Widget _buildStatsBar(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.all(8),
-      color: Colors.black.withOpacity(0.7),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      padding: const EdgeInsets.fromLTRB(8, 6, 8, 6),
+      color: Colors.black.withValues(alpha: 0.7),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
         children: [
-          // Health
-          _buildStatIcon(
-            Icons.favorite,
-            Colors.red,
-            player.health,
-            player.maxHealth,
-            'Health',
+          Row(
+            children: [
+              _buildStatIcon(Icons.favorite, Colors.red, player.health.toDouble(), player.maxHealth, 'Health'),
+              const SizedBox(width: 8),
+              _buildStatIcon(Icons.fastfood, Colors.orange, player.hunger, player.maxHunger, 'Hunger'),
+              const SizedBox(width: 8),
+              _buildStatIcon(Icons.bolt, Colors.yellow, player.energy, player.maxEnergy, 'Energy'),
+            ],
           ),
-          
-          // Hunger
-          _buildStatIcon(
-            Icons.fastfood,
-            Colors.orange,
-            player.hunger,
-            player.maxHunger,
-            'Hunger',
+          const SizedBox(height: 4),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              _buildLevelIndicator(),
+              _buildTimeIndicator(),
+            ],
           ),
-          
-          // Energy
-          _buildStatIcon(
-            Icons.bolt,
-            Colors.yellow,
-            player.energy,
-            player.maxEnergy,
-            'Energy',
-          ),
-          
-          // Level
-          _buildLevelIndicator(),
-          
-          // Time
-          _buildTimeIndicator(),
         ],
       ),
     );
   }
 
-  Widget _buildStatIcon(IconData icon, Color color, int current, int max, String label) {
-    double percentage = current / max;
-    
-    return Row(
-      children: [
-        Icon(icon, color: color, size: 20),
-        const SizedBox(width: 4),
-        SizedBox(
-          width: 60,
-          child: LinearProgressIndicator(
-            value: percentage,
-            backgroundColor: Colors.grey[800],
-            color: color,
-            minHeight: 8,
-          ),
+  Widget _buildStatIcon(IconData icon, Color color, double current, int max, String label) {
+    double percentage = (current / max).clamp(0.0, 1.0);
+
+    return Expanded(
+      child: Tooltip(
+        message: label,
+        child: Row(
+          children: [
+            Icon(icon, color: color, size: 18),
+            const SizedBox(width: 4),
+            Expanded(
+              child: LinearProgressIndicator(
+                value: percentage,
+                backgroundColor: Colors.grey[800],
+                color: color,
+                minHeight: 8,
+                borderRadius: BorderRadius.circular(4),
+              ),
+            ),
+            const SizedBox(width: 4),
+            Text(
+              '${current.ceil()}',
+              style: const TextStyle(color: Colors.white, fontSize: 11),
+            ),
+          ],
         ),
-        const SizedBox(width: 4),
-        Text(
-          '$current/$max',
-          style: const TextStyle(color: Colors.white, fontSize: 12),
-        ),
-      ],
+      ),
     );
   }
 
@@ -144,10 +159,13 @@ class HUDWidget extends StatelessWidget {
   }
 
   Widget _buildTimeIndicator() {
-    String timeString = '${gameState.world.timeOfDay.floor()}:00';
+    final time = gameState.world.timeOfDay;
+    final hours = time.floor().toString().padLeft(2, '0');
+    final minutes = ((time - time.floor()) * 60).floor().toString().padLeft(2, '0');
+    String timeString = '$hours:$minutes';
     IconData icon = gameState.world.isDay ? Icons.wb_sunny : Icons.nightlight_round;
     Color color = gameState.world.isDay ? Colors.yellow : Colors.blue;
-    
+
     return Row(
       children: [
         Icon(icon, color: color, size: 20),
@@ -162,9 +180,12 @@ class HUDWidget extends StatelessWidget {
 
   Widget _buildActionMessage() {
     return Container(
-      margin: const EdgeInsets.only(top: 60),
+      margin: const EdgeInsets.only(top: 76),
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      color: Colors.black.withOpacity(0.7),
+      decoration: BoxDecoration(
+        color: Colors.black.withValues(alpha: 0.7),
+        borderRadius: BorderRadius.circular(8),
+      ),
       child: Text(
         gameState.currentAction,
         style: const TextStyle(color: Colors.white, fontSize: 16),
@@ -176,14 +197,15 @@ class HUDWidget extends StatelessWidget {
   Widget _buildControlBar(BuildContext context) {
     return Container(
       padding: const EdgeInsets.all(8),
-      color: Colors.black.withOpacity(0.7),
+      color: Colors.black.withValues(alpha: 0.7),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceEvenly,
         children: [
-          _buildControlButton(Icons.arrow_upward, 'Up', () {}),
-          _buildControlButton(Icons.inventory, 'Inventory', onInventoryToggle),
+          _buildControlButton(Icons.inventory, 'Items', onInventoryToggle),
           _buildControlButton(Icons.build, 'Craft', onCraftingToggle),
           _buildControlButton(Icons.map, 'Map', onMapToggle),
+          _buildControlButton(Icons.bedtime, 'Rest', gameState.rest),
+          _buildControlButton(Icons.pause, 'Pause', gameState.togglePause),
           _buildSelectedToolIndicator(),
         ],
       ),
@@ -197,6 +219,7 @@ class HUDWidget extends StatelessWidget {
           icon: Icon(icon, color: Colors.white),
           onPressed: onPressed,
           tooltip: label,
+          visualDensity: VisualDensity.compact,
         ),
         Text(
           label,
@@ -209,19 +232,14 @@ class HUDWidget extends StatelessWidget {
   Widget _buildSelectedToolIndicator() {
     String toolName = player.selectedTool;
     IconData icon = _getToolIcon(toolName);
-    
+
     return Column(
       children: [
         Icon(icon, color: Colors.white, size: 24),
         Text(
-          toolName.replaceAll('_', ' ').toUpperCase(),
+          toolName == 'none' ? 'HANDS' : toolName.replaceAll('_', ' ').toUpperCase(),
           style: const TextStyle(color: Colors.white, fontSize: 10),
         ),
-        if (player.inventory[toolName]! > 0 || toolName == 'none')
-          Text(
-            toolName == 'none' ? '' : '${player.inventory[toolName]}',
-            style: const TextStyle(color: Colors.white, fontSize: 12),
-          ),
       ],
     );
   }
@@ -233,22 +251,22 @@ class HUDWidget extends StatelessWidget {
       case 'pickaxe':
         return Icons.minimize;
       case 'fishing_rod':
-        return Icons.fishing;
+        return Icons.phishing;
       case 'stick':
         return Icons.linear_scale;
       case 'wooden_sword':
-        return Icons.sword;
+        return Icons.hardware;
       case 'campfire':
         return Icons.fireplace;
       default:
-        return Icons.help_outline;
+        return Icons.back_hand;
     }
   }
 
   Widget _buildInventoryOverlay(BuildContext context) {
-    return Positioned.fill(
-      child: Container(
-        color: Colors.black.withOpacity(0.9),
+    return _overlay(
+      Container(
+        color: Colors.black.withValues(alpha: 0.9),
         child: Column(
           children: [
             // Title
@@ -266,14 +284,14 @@ class HUDWidget extends StatelessWidget {
                 ],
               ),
             ),
-            
+
             // Inventory grid
             Expanded(
               child: GridView.builder(
                 padding: const EdgeInsets.all(8),
                 gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
                   crossAxisCount: 4,
-                  childAspectRatio: 1.2,
+                  childAspectRatio: 0.9,
                   crossAxisSpacing: 8,
                   mainAxisSpacing: 8,
                 ),
@@ -281,14 +299,14 @@ class HUDWidget extends StatelessWidget {
                 itemBuilder: (context, index) {
                   String item = player.inventory.keys.elementAt(index);
                   int count = player.inventory.values.elementAt(index);
-                  
+
                   if (count <= 0) return Container();
-                  
+
                   return _buildInventoryItem(item, count);
                 },
               ),
             ),
-            
+
             // Close button
             Padding(
               padding: const EdgeInsets.all(16),
@@ -306,7 +324,7 @@ class HUDWidget extends StatelessWidget {
   Widget _buildInventoryItem(String item, int count) {
     IconData icon = _getItemIcon(item);
     String displayName = item.replaceAll('_', ' ');
-    
+
     return GestureDetector(
       onTap: () {
         if (item == 'apple' || item == 'berry' || item == 'fish') {
@@ -334,6 +352,8 @@ class HUDWidget extends StatelessWidget {
               displayName,
               style: const TextStyle(color: Colors.white, fontSize: 10),
               textAlign: TextAlign.center,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
             ),
             Text(
               '$count',
@@ -356,19 +376,19 @@ class HUDWidget extends StatelessWidget {
       case 'berry':
         return Icons.local_florist;
       case 'fish':
-        return Icons.fish;
+        return Icons.set_meal;
       case 'axe':
         return Icons.agriculture;
       case 'pickaxe':
         return Icons.minimize;
       case 'fishing_rod':
-        return Icons.fishing;
+        return Icons.phishing;
       case 'stick':
         return Icons.linear_scale;
       case 'seeds':
         return Icons.grass;
       case 'wooden_sword':
-        return Icons.agriculture;
+        return Icons.hardware;
       case 'campfire':
         return Icons.fireplace;
       default:
@@ -388,7 +408,7 @@ class HUDWidget extends StatelessWidget {
         'name': 'Wooden Sword',
         'id': 'wooden_sword',
         'ingredients': {'wood': 2, 'stick': 1},
-        'icon': Icons.agriculture,
+        'icon': Icons.hardware,
       },
       {
         'name': 'Campfire',
@@ -400,13 +420,13 @@ class HUDWidget extends StatelessWidget {
         'name': 'Fishing Rod',
         'id': 'fishing_rod',
         'ingredients': {'stick': 2, 'wood': 1},
-        'icon': Icons.fishing,
+        'icon': Icons.phishing,
       },
     ];
 
-    return Positioned.fill(
-      child: Container(
-        color: Colors.black.withOpacity(0.9),
+    return _overlay(
+      Container(
+        color: Colors.black.withValues(alpha: 0.9),
         child: Column(
           children: [
             // Title
@@ -424,7 +444,7 @@ class HUDWidget extends StatelessWidget {
                 ],
               ),
             ),
-            
+
             // Recipes list
             Expanded(
               child: ListView.builder(
@@ -433,7 +453,7 @@ class HUDWidget extends StatelessWidget {
                 itemBuilder: (context, index) {
                   var recipe = recipes[index];
                   bool canCraft = _canCraftRecipe(recipe['ingredients']);
-                  
+
                   return Card(
                     color: Colors.grey[800],
                     child: ListTile(
@@ -446,7 +466,7 @@ class HUDWidget extends StatelessWidget {
                         _formatIngredients(recipe['ingredients']),
                         style: const TextStyle(color: Colors.grey),
                       ),
-                      trailing: canCraft 
+                      trailing: canCraft
                           ? IconButton(
                               icon: const Icon(Icons.check, color: Colors.green),
                               onPressed: () => gameState.craftItem(recipe['id']),
@@ -457,7 +477,7 @@ class HUDWidget extends StatelessWidget {
                 },
               ),
             ),
-            
+
             // Close button
             Padding(
               padding: const EdgeInsets.all(16),
@@ -488,9 +508,9 @@ class HUDWidget extends StatelessWidget {
   }
 
   Widget _buildMapOverlay(BuildContext context) {
-    return Positioned.fill(
-      child: Container(
-        color: Colors.black.withOpacity(0.9),
+    return _overlay(
+      Container(
+        color: Colors.black.withValues(alpha: 0.9),
         child: Column(
           children: [
             // Title
@@ -508,7 +528,7 @@ class HUDWidget extends StatelessWidget {
                 ],
               ),
             ),
-            
+
             // Map content
             Expanded(
               child: Container(
@@ -525,7 +545,7 @@ class HUDWidget extends StatelessWidget {
                 ),
               ),
             ),
-            
+
             // Close button
             Padding(
               padding: const EdgeInsets.all(16),
@@ -541,9 +561,9 @@ class HUDWidget extends StatelessWidget {
   }
 
   Widget _buildPauseMenu(BuildContext context) {
-    return Positioned.fill(
-      child: Container(
-        color: Colors.black.withOpacity(0.8),
+    return _overlay(
+      Container(
+        color: Colors.black.withValues(alpha: 0.8),
         child: Center(
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
@@ -614,7 +634,7 @@ class MapPainter extends CustomPainter {
     double scaleX = size.width / world.width;
     double scaleY = size.height / world.height;
     double scale = scaleX < scaleY ? scaleX : scaleY;
-    
+
     double offsetX = (size.width - world.width * scale) / 2;
     double offsetY = (size.height - world.height * scale) / 2;
 
@@ -622,7 +642,7 @@ class MapPainter extends CustomPainter {
     for (int y = 0; y < world.height; y++) {
       for (int x = 0; x < world.width; x++) {
         String tile = world.getTileAt(x, y);
-        
+
         if (tile == 'water') {
           canvas.drawRect(
             Rect.fromLTWH(

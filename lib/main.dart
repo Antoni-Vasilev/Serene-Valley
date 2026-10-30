@@ -1,7 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'screens/game_screen.dart';
 
 void main() {
+  WidgetsFlutterBinding.ensureInitialized();
+  // Full-screen game: hide the status and navigation bars until swiped in.
+  SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
   runApp(const SereneValleyApp());
 }
 

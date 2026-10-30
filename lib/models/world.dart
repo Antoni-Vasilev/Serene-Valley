@@ -1,4 +1,3 @@
-import 'dart:ui';
 import 'dart:math';
 import 'package:flutter/material.dart';
 
@@ -68,6 +67,9 @@ class World {
     
     // Generate water bodies
     _generateLakes();
+
+    // Lakes and terrain may have covered the spawn point.
+    playerSpawn = findWalkableNear(playerSpawn);
   }
 
   void _generateTerrain() {
@@ -95,7 +97,7 @@ class World {
       
       if (random.nextDouble() < 0.7) {
         tiles[y][x] = 'water';
-        water['river_$x_$y'] = Offset(x.toDouble(), y.toDouble());
+        water['river_${x}_$y'] = Offset(x.toDouble(), y.toDouble());
         riverPaths.add(Offset(x.toDouble(), y.toDouble()));
       }
       
@@ -205,7 +207,7 @@ class World {
           tiles[y][x] != 'wood_floor' && 
           tiles[y][x] != 'wood_wall' &&
           random.nextDouble() < 0.7) {
-        trees['tree_$x_$y'] = Offset(x.toDouble(), y.toDouble());
+        trees['tree_${x}_$y'] = Offset(x.toDouble(), y.toDouble());
       }
     }
   }
@@ -220,7 +222,7 @@ class World {
           tiles[y][x] != 'wood_floor' && 
           tiles[y][x] != 'wood_wall' &&
           random.nextDouble() < 0.6) {
-        rocks['rock_$x_$y'] = Offset(x.toDouble(), y.toDouble());
+        rocks['rock_${x}_$y'] = Offset(x.toDouble(), y.toDouble());
       }
     }
   }
@@ -238,11 +240,11 @@ class World {
           random.nextDouble() < 0.5) {
         
         if (random.nextDouble() < 0.4) {
-          plants['berry_bush_$x_$y'] = Offset(x.toDouble(), y.toDouble());
+          plants['berry_bush_${x}_$y'] = Offset(x.toDouble(), y.toDouble());
         } else if (random.nextDouble() < 0.6) {
-          plants['flower_$x_$y'] = Offset(x.toDouble(), y.toDouble());
+          plants['flower_${x}_$y'] = Offset(x.toDouble(), y.toDouble());
         } else {
-          plants['grass_tall_$x_$y'] = Offset(x.toDouble(), y.toDouble());
+          plants['grass_tall_${x}_$y'] = Offset(x.toDouble(), y.toDouble());
         }
       }
     }
@@ -259,11 +261,11 @@ class World {
           tiles[y][x] != 'wood_wall') {
         
         if (random.nextDouble() < 0.4) {
-          animals['rabbit_$x_$y'] = Offset(x.toDouble(), y.toDouble());
+          animals['rabbit_${x}_$y'] = Offset(x.toDouble(), y.toDouble());
         } else if (random.nextDouble() < 0.7) {
-          animals['deer_$x_$y'] = Offset(x.toDouble(), y.toDouble());
+          animals['deer_${x}_$y'] = Offset(x.toDouble(), y.toDouble());
         } else {
-          animals['bird_$x_$y'] = Offset(x.toDouble(), y.toDouble());
+          animals['bird_${x}_$y'] = Offset(x.toDouble(), y.toDouble());
         }
       }
     }
@@ -282,7 +284,7 @@ class World {
             double dist = sqrt(pow(x - centerX, 2) + pow(y - centerY, 2));
             if (dist < lakeSize && random.nextDouble() < 0.6) {
               tiles[y][x] = 'water';
-              water['lake_$x_$y'] = Offset(x.toDouble(), y.toDouble());
+              water['lake_${x}_$y'] = Offset(x.toDouble(), y.toDouble());
             }
           }
         }
@@ -304,11 +306,34 @@ class World {
     return 'none';
   }
 
-  void updateTime(double deltaTime) {
-    timeOfDay += deltaTime * 0.001;
-    
+  bool isWalkable(int x, int y) {
+    final tile = getTileAt(x, y);
+    return tile != 'water' && tile != 'wood_wall' && tile != 'stone' && tile != 'void';
+  }
+
+  /// Returns the walkable tile closest to [origin], searching outward in rings.
+  Offset findWalkableNear(Offset origin) {
+    final ox = origin.dx.floor().clamp(0, width - 1);
+    final oy = origin.dy.floor().clamp(0, height - 1);
+    for (int r = 0; r < max(width, height); r++) {
+      for (int y = oy - r; y <= oy + r; y++) {
+        for (int x = ox - r; x <= ox + r; x++) {
+          final onRing = (x - ox).abs() == r || (y - oy).abs() == r;
+          if (onRing && isWalkable(x, y)) {
+            return Offset(x.toDouble(), y.toDouble());
+          }
+        }
+      }
+    }
+    return Offset(ox.toDouble(), oy.toDouble());
+  }
+
+  /// Advances the clock by [dt] seconds; a full day lasts ten minutes.
+  void updateTime(double dt) {
+    timeOfDay += dt * 24 / 600;
+
     if (timeOfDay >= 24.0) {
-      timeOfDay = 0.0;
+      timeOfDay -= 24.0;
     }
     
     isDay = timeOfDay >= 6.0 && timeOfDay <= 18.0;

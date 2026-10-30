@@ -1,630 +1,223 @@
+import 'dart:math';
 import 'package:flutter/material.dart';
-import '../models/world.dart';
 import '../models/game_state.dart';
+import 'player_widget.dart';
 import 'tile_widget.dart';
 
+/// Renders the visible part of the world, its objects and the player onto a
+/// single canvas. Repaints whenever [gameState] notifies.
 class WorldWidget extends StatelessWidget {
-  final World world;
   final GameState gameState;
   final double tileSize;
 
   const WorldWidget({
     super.key,
-    required this.world,
     required this.gameState,
     required this.tileSize,
   });
 
   @override
   Widget build(BuildContext context) {
-    return Stack(
-      children: [
-        // Background
-        Positioned.fill(
-          child: Container(
-            color: world.getTimeColor(),
-          ),
-        ),
-        
-        // Tile grid
-        ..._buildTiles(),
-        
-        // Objects (trees, rocks, etc.)
-        ..._buildObjects(),
-        
-        // Animals
-        ..._buildAnimals(),
-        
-        // Overlay for night
-        if (!world.isDay)
-          Positioned.fill(
-            child: Container(
-              color: Colors.black.withOpacity(0.4),
-            ),
-          ),
-      ],
-    );
-  }
-
-  List<Widget> _buildTiles() {
-    List<Widget> tiles = [];
-    
-    int startX = (gameState.cameraOffset.dx / tileSize).floor() - 2;
-    int startY = (gameState.cameraOffset.dy / tileSize).floor() - 2;
-    int endX = startX + (MediaQuery.of(navigatorKey.currentContext!).size.width / tileSize).ceil() + 4;
-    int endY = startY + (MediaQuery.of(navigatorKey.currentContext!).size.height / tileSize).ceil() + 4;
-    
-    // Clamp to world bounds
-    startX = startX.clamp(0, world.width - 1);
-    startY = startY.clamp(0, world.height - 1);
-    endX = endX.clamp(0, world.width);
-    endY = endY.clamp(0, world.height);
-    
-    for (int y = startY; y < endY; y++) {
-      for (int x = startX; x < endX; x++) {
-        if (x >= 0 && x < world.width && y >= 0 && y < world.height) {
-          String tileType = world.getTileAt(x, y);
-          
-          tiles.add(
-            Positioned(
-              left: x * tileSize,
-              top: y * tileSize,
-              child: TileWidget(
-                tileType: tileType,
-                tileSize: tileSize,
-                lightLevel: world.getLightLevel(),
-              ),
-            ),
-          );
-        }
-      }
-    }
-    
-    return tiles;
-  }
-
-  List<Widget> _buildObjects() {
-    List<Widget> objects = [];
-    
-    // Trees
-    for (var entry in world.trees.entries) {
-      int x = entry.key.dx.floor();
-      int y = entry.key.dy.floor();
-      
-      // Only render visible trees
-      if (_isVisible(x, y)) {
-        objects.add(
-          Positioned(
-            left: x * tileSize,
-            top: y * tileSize,
-            child: _buildTree(tileSize),
-          ),
-        );
-      }
-    }
-    
-    // Rocks
-    for (var entry in world.rocks.entries) {
-      int x = entry.key.dx.floor();
-      int y = entry.key.dy.floor();
-      
-      if (_isVisible(x, y)) {
-        objects.add(
-          Positioned(
-            left: x * tileSize,
-            top: y * tileSize,
-            child: _buildRock(tileSize),
-          ),
-        );
-      }
-    }
-    
-    // Water objects
-    for (var entry in world.water.entries) {
-      int x = entry.key.dx.floor();
-      int y = entry.key.dy.floor();
-      
-      if (_isVisible(x, y)) {
-        objects.add(
-          Positioned(
-            left: x * tileSize,
-            top: y * tileSize,
-            child: _buildWaterObject(tileSize, entry.value),
-          ),
-        );
-      }
-    }
-    
-    // Plants
-    for (var entry in world.plants.entries) {
-      int x = entry.key.dx.floor();
-      int y = entry.key.dy.floor();
-      
-      if (_isVisible(x, y)) {
-        objects.add(
-          Positioned(
-            left: x * tileSize,
-            top: y * tileSize,
-            child: _buildPlant(tileSize, entry.value),
-          ),
-        );
-      }
-    }
-    
-    // Village markers
-    for (var location in world.villageLocations) {
-      if (_isVisible(location.dx.floor(), location.dy.floor())) {
-        objects.add(
-          Positioned(
-            left: location.dx * tileSize,
-            top: location.dy * tileSize,
-            child: _buildVillageMarker(tileSize),
-          ),
-        );
-      }
-    }
-    
-    // Cave entrances
-    for (var location in world.caveEntrances) {
-      if (_isVisible(location.dx.floor(), location.dy.floor())) {
-        objects.add(
-          Positioned(
-            left: location.dx * tileSize,
-            top: location.dy * tileSize,
-            child: _buildCaveEntrance(tileSize),
-          ),
-        );
-      }
-    }
-    
-    return objects;
-  }
-
-  List<Widget> _buildAnimals() {
-    List<Widget> animals = [];
-    
-    for (var entry in world.animals.entries) {
-      int x = entry.key.dx.floor();
-      int y = entry.key.dy.floor();
-      
-      if (_isVisible(x, y)) {
-        animals.add(
-          Positioned(
-            left: x * tileSize,
-            top: y * tileSize,
-            child: _buildAnimal(tileSize, entry.value),
-          ),
-        );
-      }
-    }
-    
-    return animals;
-  }
-
-  bool _isVisible(int x, int y) {
-    double screenWidth = MediaQuery.of(navigatorKey.currentContext!).size.width;
-    double screenHeight = MediaQuery.of(navigatorKey.currentContext!).size.height;
-    
-    double left = x * tileSize;
-    double top = y * tileSize;
-    double right = left + tileSize;
-    double bottom = top + tileSize;
-    
-    double cameraLeft = gameState.cameraOffset.dx;
-    double cameraTop = gameState.cameraOffset.dy;
-    double cameraRight = cameraLeft + screenWidth;
-    double cameraBottom = cameraTop + screenHeight;
-    
-    return right > cameraLeft && left < cameraRight && 
-           bottom > cameraTop && top < cameraBottom;
-  }
-
-  Widget _buildTree(double size) {
-    return SizedBox(
-      width: size,
-      height: size * 2,
-      child: Stack(
-        children: [
-          // Trunk
-          Positioned(
-            left: size * 0.4,
-            bottom: 0,
-            child: Container(
-              width: size * 0.2,
-              height: size * 0.6,
-              color: const Color(0xFF8B4513),
-            ),
-          ),
-          // Leaves
-          Positioned(
-            left: size * 0.1,
-            top: size * 0.2,
-            child: Container(
-              width: size * 0.8,
-              height: size * 0.8,
-              decoration: BoxDecoration(
-                color: const Color(0xFF228B22),
-                borderRadius: BorderRadius.circular(size * 0.4),
-              ),
-            ),
-          ),
-          Positioned(
-            left: size * 0.2,
-            top: size * 0.5,
-            child: Container(
-              width: size * 0.6,
-              height: size * 0.6,
-              decoration: BoxDecoration(
-                color: const Color(0xFF32CD32),
-                borderRadius: BorderRadius.circular(size * 0.3),
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildRock(double size) {
-    return SizedBox(
-      width: size,
-      height: size,
-      child: Container(
-        decoration: BoxDecoration(
-          color: const Color(0xFF808080),
-          borderRadius: BorderRadius.circular(size * 0.2),
-        ),
-        child: Stack(
-          children: [
-            // Rock texture
-            Positioned.fill(
-              child: Container(
-                decoration: BoxDecoration(
-                  gradient: const LinearGradient(
-                    colors: [Color(0xFF696969), Color(0xFFA9A9A9)],
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                  ),
-                  borderRadius: BorderRadius.circular(size * 0.2),
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildWaterObject(double size, String type) {
-    if (type == 'river') {
-      return Container(
-        width: size,
-        height: size,
-        color: Colors.blue.withOpacity(0.6),
-      );
-    } else {
-      return Container(
-        width: size,
-        height: size,
-        color: Colors.blue.withOpacity(0.4),
-      );
-    }
-  }
-
-  Widget _buildPlant(double size, String type) {
-    switch (type) {
-      case 'berry_bush':
-        return SizedBox(
-          width: size,
-          height: size * 0.8,
-          child: Stack(
-            children: [
-              // Bush
-              Positioned(
-                left: size * 0.2,
-                bottom: 0,
-                child: Container(
-                  width: size * 0.6,
-                  height: size * 0.5,
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF228B22),
-                    borderRadius: BorderRadius.circular(size * 0.2),
-                  ),
-                ),
-              ),
-              // Berries
-              Positioned(
-                left: size * 0.3,
-                top: size * 0.2,
-                child: Container(
-                  width: size * 0.1,
-                  height: size * 0.1,
-                  decoration: BoxDecoration(
-                    color: Colors.red,
-                    shape: BoxShape.circle,
-                  ),
-                ),
-              ),
-              Positioned(
-                left: size * 0.5,
-                top: size * 0.3,
-                child: Container(
-                  width: size * 0.1,
-                  height: size * 0.1,
-                  decoration: BoxDecoration(
-                    color: Colors.red,
-                    shape: BoxShape.circle,
-                  ),
-                ),
-              ),
-            ],
-          ),
-        );
-        
-      case 'flower':
-        return SizedBox(
-          width: size,
-          height: size * 0.5,
-          child: Stack(
-            children: [
-              // Stem
-              Positioned(
-                left: size * 0.45,
-                bottom: 0,
-                child: Container(
-                  width: size * 0.1,
-                  height: size * 0.4,
-                  color: Colors.green,
-                ),
-              ),
-              // Flower
-              Positioned(
-                left: size * 0.4,
-                top: 0,
-                child: Container(
-                  width: size * 0.2,
-                  height: size * 0.2,
-                  decoration: BoxDecoration(
-                    color: Colors.yellow,
-                    shape: BoxShape.circle,
-                  ),
-                ),
-              ),
-            ],
-          ),
-        );
-        
-      default: // grass_tall
-        return SizedBox(
-          width: size,
-          height: size * 0.8,
-          child: Container(
-            width: size * 0.2,
-            height: size * 0.8,
-            color: Colors.green,
-          ),
-        );
-    }
-  }
-
-  Widget _buildAnimal(double size, String type) {
-    switch (type) {
-      case 'rabbit':
-        return SizedBox(
-          width: size,
-          height: size * 0.6,
-          child: Stack(
-            children: [
-              // Body
-              Positioned(
-                left: size * 0.2,
-                top: size * 0.2,
-                child: Container(
-                  width: size * 0.6,
-                  height: size * 0.4,
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(size * 0.2),
-                  ),
-                ),
-              ),
-              // Head
-              Positioned(
-                left: size * 0.4,
-                top: size * 0.1,
-                child: Container(
-                  width: size * 0.2,
-                  height: size * 0.2,
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    shape: BoxShape.circle,
-                  ),
-                ),
-              ),
-              // Ears
-              Positioned(
-                left: size * 0.35,
-                top: size * 0.05,
-                child: Container(
-                  width: size * 0.05,
-                  height: size * 0.15,
-                  color: Colors.white,
-                ),
-              ),
-              Positioned(
-                left: size * 0.55,
-                top: size * 0.05,
-                child: Container(
-                  width: size * 0.05,
-                  height: size * 0.15,
-                  color: Colors.white,
-                ),
-              ),
-            ],
-          ),
-        );
-        
-      case 'deer':
-        return SizedBox(
-          width: size,
-          height: size * 0.8,
-          child: Stack(
-            children: [
-              // Body
-              Positioned(
-                left: size * 0.2,
-                top: size * 0.3,
-                child: Container(
-                  width: size * 0.6,
-                  height: size * 0.4,
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF8B4513),
-                    borderRadius: BorderRadius.circular(size * 0.2),
-                  ),
-                ),
-              ),
-              // Head
-              Positioned(
-                left: size * 0.4,
-                top: size * 0.2,
-                child: Container(
-                  width: size * 0.2,
-                  height: size * 0.2,
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF8B4513),
-                    shape: BoxShape.circle,
-                  ),
-                ),
-              ),
-              // Antlers
-              Positioned(
-                left: size * 0.3,
-                top: size * 0.1,
-                child: Container(
-                  width: size * 0.1,
-                  height: size * 0.15,
-                  color: const Color(0xFF8B4513),
-                ),
-              ),
-              Positioned(
-                left: size * 0.5,
-                top: size * 0.1,
-                child: Container(
-                  width: size * 0.1,
-                  height: size * 0.15,
-                  color: const Color(0xFF8B4513),
-                ),
-              ),
-              // Legs
-              Positioned(
-                left: size * 0.25,
-                top: size * 0.6,
-                child: Container(
-                  width: size * 0.08,
-                  height: size * 0.2,
-                  color: const Color(0xFF8B4513),
-                ),
-              ),
-              Positioned(
-                left: size * 0.45,
-                top: size * 0.6,
-                child: Container(
-                  width: size * 0.08,
-                  height: size * 0.2,
-                  color: const Color(0xFF8B4513),
-                ),
-              ),
-            ],
-          ),
-        );
-        
-      default: // bird
-        return SizedBox(
-          width: size,
-          height: size * 0.4,
-          child: Stack(
-            children: [
-              // Body
-              Positioned(
-                left: size * 0.3,
-                top: size * 0.1,
-                child: Container(
-                  width: size * 0.4,
-                  height: size * 0.2,
-                  decoration: BoxDecoration(
-                    color: Colors.blue,
-                    borderRadius: BorderRadius.circular(size * 0.1),
-                  ),
-                ),
-              ),
-              // Head
-              Positioned(
-                left: size * 0.5,
-                top: size * 0.1,
-                child: Container(
-                  width: size * 0.2,
-                  height: size * 0.2,
-                  decoration: BoxDecoration(
-                    color: Colors.red,
-                    shape: BoxShape.circle,
-                  ),
-                ),
-              ),
-              // Beak
-              Positioned(
-                left: size * 0.65,
-                top: size * 0.15,
-                child: Container(
-                  width: size * 0.05,
-                  height: size * 0.05,
-                  color: Colors.orange,
-                ),
-              ),
-            ],
-          ),
-        );
-    }
-  }
-
-  Widget _buildVillageMarker(double size) {
-    return SizedBox(
-      width: size,
-      height: size,
-      child: Center(
-        child: Container(
-          width: size * 0.6,
-          height: size * 0.6,
-          decoration: BoxDecoration(
-            color: Colors.brown,
-            borderRadius: BorderRadius.circular(size * 0.1),
-          ),
-          child: Icon(
-            Icons.house,
-            size: size * 0.4,
-            color: Colors.white,
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildCaveEntrance(double size) {
-    return SizedBox(
-      width: size,
-      height: size,
-      child: Center(
-        child: Container(
-          width: size * 0.8,
-          height: size * 0.4,
-          decoration: BoxDecoration(
-            color: Colors.black,
-            borderRadius: BorderRadius.circular(size * 0.2),
-          ),
-        ),
+    return RepaintBoundary(
+      child: CustomPaint(
+        size: Size.infinite,
+        painter: WorldPainter(gameState: gameState, tileSize: tileSize),
       ),
     );
   }
 }
 
-// Global key for navigation
-final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
+class WorldPainter extends CustomPainter {
+  final GameState gameState;
+  final double tileSize;
+
+  final Paint _paint = Paint();
+  final Paint _tilePaint = Paint()..isAntiAlias = false;
+
+  WorldPainter({required this.gameState, required this.tileSize})
+      : super(repaint: gameState);
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final world = gameState.world;
+    final px = tileSize * gameState.cameraZoom;
+    final camera = gameState.cameraOffset;
+
+    // Area outside the world.
+    _paint.color = const Color(0xFF1a1a2e);
+    canvas.drawRect(Offset.zero & size, _paint);
+
+    // Visible tile range, with a one-tile margin for tall objects.
+    final halfW = size.width / 2 / px;
+    final halfH = size.height / 2 / px;
+    final minX = max(0, (camera.dx - halfW).floor() - 1);
+    final minY = max(0, (camera.dy - halfH).floor() - 1);
+    final maxX = min(world.width - 1, (camera.dx + halfW).ceil() + 1);
+    final maxY = min(world.height - 1, (camera.dy + halfH).ceil() + 1);
+
+    bool visible(Offset p) =>
+        p.dx >= minX && p.dx <= maxX && p.dy >= minY && p.dy <= maxY;
+
+    canvas.save();
+    // From here on, one unit equals one tile.
+    canvas.translate(size.width / 2, size.height / 2);
+    canvas.scale(px);
+    canvas.translate(-camera.dx, -camera.dy);
+
+    // Terrain. Tiles overlap slightly to avoid seams between them.
+    for (int y = minY; y <= maxY; y++) {
+      for (int x = minX; x <= maxX; x++) {
+        _tilePaint.color = TileColors.shaded(world.tiles[y][x], x, y);
+        canvas.drawRect(Rect.fromLTWH(x.toDouble(), y.toDouble(), 1.02, 1.02), _tilePaint);
+      }
+    }
+
+    // Ground decorations first so trees and animals draw on top of them.
+    for (final entry in world.plants.entries) {
+      if (visible(entry.value)) _drawPlant(canvas, entry.key, entry.value);
+    }
+    for (final location in world.caveEntrances) {
+      if (visible(location)) _drawCave(canvas, location);
+    }
+    for (final location in world.villageLocations) {
+      if (visible(location)) _drawVillageMarker(canvas, location);
+    }
+    for (final entry in world.rocks.entries) {
+      if (visible(entry.value)) _drawRock(canvas, entry.value);
+    }
+    for (final entry in world.animals.entries) {
+      if (visible(entry.value)) _drawAnimal(canvas, entry.key, entry.value);
+    }
+
+    _drawInteractionHighlight(canvas);
+
+    final playerOrigin = gameState.player.position - const Offset(0.5, 0.5);
+    final walkPhase = gameState.isMoving ? sin(gameState.walkTime * 14) : 0.0;
+    PlayerSprite.paint(canvas, playerOrigin, gameState.player.direction, walkPhase);
+
+    // Trees last so the canopy can overlap the player walking behind them.
+    for (final entry in world.trees.entries) {
+      if (visible(entry.value)) _drawTree(canvas, entry.value);
+    }
+
+    canvas.restore();
+
+    // Darken the screen at night.
+    final darkness = (1 - world.getLightLevel()) * 0.6;
+    if (darkness > 0) {
+      _paint.color = const Color(0xFF0A0A2A).withValues(alpha: darkness);
+      canvas.drawRect(Offset.zero & size, _paint);
+    }
+  }
+
+  void _drawInteractionHighlight(Canvas canvas) {
+    final key = gameState.interactionKey;
+    if (key == null) return;
+    final world = gameState.world;
+    final pos = world.trees[key] ?? world.rocks[key] ?? world.plants[key] ?? world.animals[key];
+    if (pos == null) return;
+    final paint = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 0.06
+      ..color = Colors.white.withValues(alpha: 0.8);
+    canvas.drawCircle(pos + const Offset(0.5, 0.5), 0.6, paint);
+  }
+
+  void _drawTree(Canvas canvas, Offset p) {
+    // Trunk
+    _paint.color = const Color(0xFF8B4513);
+    canvas.drawRect(Rect.fromLTWH(p.dx + 0.4, p.dy + 0.45, 0.2, 0.55), _paint);
+    // Leaves
+    _paint.color = const Color(0xFF228B22);
+    canvas.drawCircle(Offset(p.dx + 0.5, p.dy + 0.3), 0.45, _paint);
+    _paint.color = const Color(0xFF32CD32);
+    canvas.drawCircle(Offset(p.dx + 0.42, p.dy + 0.22), 0.25, _paint);
+  }
+
+  void _drawRock(Canvas canvas, Offset p) {
+    final rect = Rect.fromLTWH(p.dx + 0.1, p.dy + 0.25, 0.8, 0.65);
+    _paint.color = const Color(0xFF696969);
+    canvas.drawRRect(RRect.fromRectAndRadius(rect, const Radius.circular(0.2)), _paint);
+    _paint.color = const Color(0xFFA9A9A9);
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(Rect.fromLTWH(p.dx + 0.2, p.dy + 0.3, 0.45, 0.3), const Radius.circular(0.12)),
+      _paint,
+    );
+  }
+
+  void _drawPlant(Canvas canvas, String key, Offset p) {
+    if (key.startsWith('berry_bush')) {
+      _paint.color = const Color(0xFF228B22);
+      canvas.drawRRect(
+        RRect.fromRectAndRadius(Rect.fromLTWH(p.dx + 0.15, p.dy + 0.4, 0.7, 0.5), const Radius.circular(0.2)),
+        _paint,
+      );
+      _paint.color = Colors.red;
+      canvas.drawCircle(Offset(p.dx + 0.35, p.dy + 0.55), 0.07, _paint);
+      canvas.drawCircle(Offset(p.dx + 0.6, p.dy + 0.5), 0.07, _paint);
+      canvas.drawCircle(Offset(p.dx + 0.5, p.dy + 0.72), 0.07, _paint);
+    } else if (key.startsWith('flower')) {
+      _paint.color = Colors.green;
+      canvas.drawRect(Rect.fromLTWH(p.dx + 0.47, p.dy + 0.5, 0.06, 0.4), _paint);
+      _paint.color = Colors.yellow;
+      canvas.drawCircle(Offset(p.dx + 0.5, p.dy + 0.45), 0.12, _paint);
+    } else {
+      _paint.color = const Color(0xFF2E7D32);
+      for (final dx in const [0.3, 0.45, 0.6]) {
+        canvas.drawRect(Rect.fromLTWH(p.dx + dx, p.dy + 0.45, 0.06, 0.45), _paint);
+      }
+    }
+  }
+
+  void _drawAnimal(Canvas canvas, String key, Offset p) {
+    if (key.startsWith('rabbit')) {
+      _paint.color = Colors.white;
+      canvas.drawOval(Rect.fromLTWH(p.dx + 0.25, p.dy + 0.5, 0.5, 0.35), _paint);
+      canvas.drawCircle(Offset(p.dx + 0.68, p.dy + 0.48), 0.13, _paint);
+      canvas.drawRect(Rect.fromLTWH(p.dx + 0.62, p.dy + 0.2, 0.05, 0.2), _paint);
+      canvas.drawRect(Rect.fromLTWH(p.dx + 0.71, p.dy + 0.2, 0.05, 0.2), _paint);
+    } else if (key.startsWith('deer')) {
+      _paint.color = const Color(0xFF8B4513);
+      canvas.drawRect(Rect.fromLTWH(p.dx + 0.28, p.dy + 0.65, 0.08, 0.3), _paint);
+      canvas.drawRect(Rect.fromLTWH(p.dx + 0.62, p.dy + 0.65, 0.08, 0.3), _paint);
+      canvas.drawOval(Rect.fromLTWH(p.dx + 0.2, p.dy + 0.4, 0.6, 0.35), _paint);
+      canvas.drawCircle(Offset(p.dx + 0.78, p.dy + 0.35), 0.13, _paint);
+      _paint.color = const Color(0xFF5D3A1A);
+      canvas.drawRect(Rect.fromLTWH(p.dx + 0.72, p.dy + 0.08, 0.04, 0.18), _paint);
+      canvas.drawRect(Rect.fromLTWH(p.dx + 0.82, p.dy + 0.08, 0.04, 0.18), _paint);
+    } else {
+      _paint.color = Colors.blue;
+      canvas.drawOval(Rect.fromLTWH(p.dx + 0.3, p.dy + 0.4, 0.4, 0.22), _paint);
+      _paint.color = Colors.red;
+      canvas.drawCircle(Offset(p.dx + 0.68, p.dy + 0.42), 0.1, _paint);
+      _paint.color = Colors.orange;
+      canvas.drawRect(Rect.fromLTWH(p.dx + 0.77, p.dy + 0.4, 0.07, 0.05), _paint);
+    }
+  }
+
+  void _drawVillageMarker(Canvas canvas, Offset p) {
+    _paint.color = Colors.brown;
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(Rect.fromLTWH(p.dx + 0.2, p.dy + 0.2, 0.6, 0.6), const Radius.circular(0.08)),
+      _paint,
+    );
+    // A small house icon.
+    _paint.color = Colors.white;
+    final roof = Path()
+      ..moveTo(p.dx + 0.3, p.dy + 0.5)
+      ..lineTo(p.dx + 0.5, p.dy + 0.3)
+      ..lineTo(p.dx + 0.7, p.dy + 0.5)
+      ..close();
+    canvas.drawPath(roof, _paint);
+    canvas.drawRect(Rect.fromLTWH(p.dx + 0.36, p.dy + 0.5, 0.28, 0.2), _paint);
+  }
+
+  void _drawCave(Canvas canvas, Offset p) {
+    _paint.color = Colors.black;
+    canvas.drawOval(Rect.fromLTWH(p.dx + 0.1, p.dy + 0.3, 0.8, 0.5), _paint);
+  }
+
+  @override
+  bool shouldRepaint(covariant WorldPainter oldDelegate) =>
+      oldDelegate.gameState != gameState || oldDelegate.tileSize != tileSize;
+}

@@ -1,339 +1,62 @@
 import 'package:flutter/material.dart';
-import '../models/player.dart';
 
-class PlayerWidget extends StatelessWidget {
-  final Player player;
-  final double tileSize;
+/// Draws the player sprite. All coordinates are in tile units: the sprite
+/// fills the 1x1 square whose top-left corner is [origin].
+class PlayerSprite {
+  static const Color _body = Color(0xFF4CAF50);
+  static const Color _skin = Color(0xFFFFD700);
+  static const Color _hat = Color(0xFF8B4513);
+  static const Color _legs = Colors.blue;
+  static const Color _eyes = Color(0xFF2D1B0E);
 
-  const PlayerWidget({
-    super.key,
-    required this.player,
-    required this.tileSize,
-  });
+  static final Paint _paint = Paint();
 
-  @override
-  Widget build(BuildContext context) {
-    return Positioned(
-      left: player.position.dx * tileSize,
-      top: player.position.dy * tileSize,
-      child: _buildPlayerSprite(),
+  static void paint(Canvas canvas, Offset origin, String direction, double walkPhase) {
+    final x = origin.dx;
+    final y = origin.dy;
+
+    // Shadow
+    _paint.color = Colors.black.withValues(alpha: 0.25);
+    canvas.drawOval(Rect.fromLTWH(x + 0.2, y + 0.85, 0.6, 0.15), _paint);
+
+    // Legs alternate while walking.
+    final stride = 0.06 * walkPhase;
+    _paint.color = _legs;
+    canvas.drawRect(Rect.fromLTWH(x + 0.3, y + 0.65 + stride, 0.15, 0.25 - stride), _paint);
+    canvas.drawRect(Rect.fromLTWH(x + 0.55, y + 0.65 - stride, 0.15, 0.25 + stride), _paint);
+
+    // Body
+    _paint.color = _body;
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(Rect.fromLTWH(x + 0.25, y + 0.38, 0.5, 0.35), const Radius.circular(0.08)),
+      _paint,
     );
-  }
 
-  Widget _buildPlayerSprite() {
-    Color playerColor = const Color(0xFF4CAF50);
-    
-    switch (player.direction) {
-      case 'up':
-        return _buildUpSprite(playerColor);
+    // Head
+    _paint.color = _skin;
+    canvas.drawOval(Rect.fromLTWH(x + 0.3, y + 0.1, 0.4, 0.32), _paint);
+
+    // Hat
+    _paint.color = _hat;
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(Rect.fromLTWH(x + 0.25, y + 0.05, 0.5, 0.13), const Radius.circular(0.06)),
+      _paint,
+    );
+
+    // Eyes show which way the player is facing; none when facing away.
+    _paint.color = _eyes;
+    const e = 0.06;
+    switch (direction) {
       case 'down':
-        return _buildDownSprite(playerColor);
+        canvas.drawRect(Rect.fromLTWH(x + 0.38, y + 0.24, e, e), _paint);
+        canvas.drawRect(Rect.fromLTWH(x + 0.56, y + 0.24, e, e), _paint);
+        break;
       case 'left':
-        return _buildLeftSprite(playerColor);
+        canvas.drawRect(Rect.fromLTWH(x + 0.34, y + 0.24, e, e), _paint);
+        break;
       case 'right':
-        return _buildRightSprite(playerColor);
-      default:
-        return _buildDownSprite(playerColor);
+        canvas.drawRect(Rect.fromLTWH(x + 0.60, y + 0.24, e, e), _paint);
+        break;
     }
-  }
-
-  Widget _buildDownSprite(Color color) {
-    return SizedBox(
-      width: tileSize,
-      height: tileSize,
-      child: Stack(
-        children: [
-          // Body
-          Positioned(
-            left: tileSize * 0.25,
-            top: tileSize * 0.25,
-            child: Container(
-              width: tileSize * 0.5,
-              height: tileSize * 0.4,
-              decoration: BoxDecoration(
-                color: color,
-                shape: BoxShape.rectangle,
-              ),
-            ),
-          ),
-          // Head
-          Positioned(
-            left: tileSize * 0.3,
-            top: tileSize * 0.1,
-            child: Container(
-              width: tileSize * 0.4,
-              height: tileSize * 0.3,
-              decoration: BoxDecoration(
-                color: const Color(0xFFFFD700),
-                shape: BoxShape.circle,
-              ),
-            ),
-          ),
-          // Hat (optional)
-          Positioned(
-            left: tileSize * 0.25,
-            top: tileSize * 0.05,
-            child: Container(
-              width: tileSize * 0.5,
-              height: tileSize * 0.15,
-              decoration: BoxDecoration(
-                color: const Color(0xFF8B4513),
-                borderRadius: BorderRadius.circular(tileSize * 0.1),
-              ),
-            ),
-          ),
-          // Legs
-          Positioned(
-            left: tileSize * 0.3,
-            top: tileSize * 0.65,
-            child: Container(
-              width: tileSize * 0.15,
-              height: tileSize * 0.25,
-              decoration: BoxDecoration(
-                color: Colors.blue,
-                shape: BoxShape.rectangle,
-              ),
-            ),
-          ),
-          Positioned(
-            left: tileSize * 0.55,
-            top: tileSize * 0.65,
-            child: Container(
-              width: tileSize * 0.15,
-              height: tileSize * 0.25,
-              decoration: BoxDecoration(
-                color: Colors.blue,
-                shape: BoxShape.rectangle,
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildUpSprite(Color color) {
-    return SizedBox(
-      width: tileSize,
-      height: tileSize,
-      child: Stack(
-        children: [
-          // Body
-          Positioned(
-            left: tileSize * 0.25,
-            top: tileSize * 0.35,
-            child: Container(
-              width: tileSize * 0.5,
-              height: tileSize * 0.4,
-              decoration: BoxDecoration(
-                color: color,
-                shape: BoxShape.rectangle,
-              ),
-            ),
-          ),
-          // Head
-          Positioned(
-            left: tileSize * 0.3,
-            top: tileSize * 0.6,
-            child: Container(
-              width: tileSize * 0.4,
-              height: tileSize * 0.3,
-              decoration: BoxDecoration(
-                color: const Color(0xFFFFD700),
-                shape: BoxShape.circle,
-              ),
-            ),
-          ),
-          // Hat
-          Positioned(
-            left: tileSize * 0.25,
-            top: tileSize * 0.5,
-            child: Container(
-              width: tileSize * 0.5,
-              height: tileSize * 0.15,
-              decoration: BoxDecoration(
-                color: const Color(0xFF8B4513),
-                borderRadius: BorderRadius.circular(tileSize * 0.1),
-              ),
-            ),
-          ),
-          // Legs
-          Positioned(
-            left: tileSize * 0.3,
-            top: tileSize * 0.1,
-            child: Container(
-              width: tileSize * 0.15,
-              height: tileSize * 0.25,
-              decoration: BoxDecoration(
-                color: Colors.blue,
-                shape: BoxShape.rectangle,
-              ),
-            ),
-          ),
-          Positioned(
-            left: tileSize * 0.55,
-            top: tileSize * 0.1,
-            child: Container(
-              width: tileSize * 0.15,
-              height: tileSize * 0.25,
-              decoration: BoxDecoration(
-                color: Colors.blue,
-                shape: BoxShape.rectangle,
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildLeftSprite(Color color) {
-    return SizedBox(
-      width: tileSize,
-      height: tileSize,
-      child: Stack(
-        children: [
-          // Body
-          Positioned(
-            left: tileSize * 0.35,
-            top: tileSize * 0.25,
-            child: Container(
-              width: tileSize * 0.4,
-              height: tileSize * 0.5,
-              decoration: BoxDecoration(
-                color: color,
-                shape: BoxShape.rectangle,
-              ),
-            ),
-          ),
-          // Head
-          Positioned(
-            left: tileSize * 0.1,
-            top: tileSize * 0.2,
-            child: Container(
-              width: tileSize * 0.3,
-              height: tileSize * 0.3,
-              decoration: BoxDecoration(
-                color: const Color(0xFFFFD700),
-                shape: BoxShape.circle,
-              ),
-            ),
-          ),
-          // Hat
-          Positioned(
-            left: tileSize * 0.05,
-            top: tileSize * 0.15,
-            child: Container(
-              width: tileSize * 0.15,
-              height: tileSize * 0.2,
-              decoration: BoxDecoration(
-                color: const Color(0xFF8B4513),
-                borderRadius: BorderRadius.circular(tileSize * 0.1),
-              ),
-            ),
-          ),
-          // Legs
-          Positioned(
-            left: tileSize * 0.3,
-            top: tileSize * 0.65,
-            child: Container(
-              width: tileSize * 0.2,
-              height: tileSize * 0.15,
-              decoration: BoxDecoration(
-                color: Colors.blue,
-                shape: BoxShape.rectangle,
-              ),
-            ),
-          ),
-          Positioned(
-            left: tileSize * 0.3,
-            top: tileSize * 0.8,
-            child: Container(
-              width: tileSize * 0.2,
-              height: tileSize * 0.15,
-              decoration: BoxDecoration(
-                color: Colors.blue,
-                shape: BoxShape.rectangle,
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildRightSprite(Color color) {
-    return SizedBox(
-      width: tileSize,
-      height: tileSize,
-      child: Stack(
-        children: [
-          // Body
-          Positioned(
-            left: tileSize * 0.25,
-            top: tileSize * 0.25,
-            child: Container(
-              width: tileSize * 0.4,
-              height: tileSize * 0.5,
-              decoration: BoxDecoration(
-                color: color,
-                shape: BoxShape.rectangle,
-              ),
-            ),
-          ),
-          // Head
-          Positioned(
-            left: tileSize * 0.6,
-            top: tileSize * 0.2,
-            child: Container(
-              width: tileSize * 0.3,
-              height: tileSize * 0.3,
-              decoration: BoxDecoration(
-                color: const Color(0xFFFFD700),
-                shape: BoxShape.circle,
-              ),
-            ),
-          ),
-          // Hat
-          Positioned(
-            left: tileSize * 0.7,
-            top: tileSize * 0.15,
-            child: Container(
-              width: tileSize * 0.15,
-              height: tileSize * 0.2,
-              decoration: BoxDecoration(
-                color: const Color(0xFF8B4513),
-                borderRadius: BorderRadius.circular(tileSize * 0.1),
-              ),
-            ),
-          ),
-          // Legs
-          Positioned(
-            left: tileSize * 0.5,
-            top: tileSize * 0.65,
-            child: Container(
-              width: tileSize * 0.2,
-              height: tileSize * 0.15,
-              decoration: BoxDecoration(
-                color: Colors.blue,
-                shape: BoxShape.rectangle,
-              ),
-            ),
-          ),
-          Positioned(
-            left: tileSize * 0.5,
-            top: tileSize * 0.8,
-            child: Container(
-              width: tileSize * 0.2,
-              height: tileSize * 0.15,
-              decoration: BoxDecoration(
-                color: Colors.blue,
-                shape: BoxShape.rectangle,
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
   }
 }

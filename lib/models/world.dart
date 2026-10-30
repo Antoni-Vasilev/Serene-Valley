@@ -15,11 +15,11 @@ class World {
   // World data
   List<List<String>> tiles;
   List<List<String>> objects;
-  Map<String, Offset> trees;
-  Map<String, Offset> rocks;
-  Map<String, Offset> water;
-  Map<String, Offset> animals;
-  Map<String, Offset> plants;
+  Map<Offset, String> trees;
+  Map<Offset, String> rocks;
+  Map<Offset, String> water;
+  Map<Offset, String> animals;
+  Map<Offset, String> plants;
   
   // Spawn points
   Offset playerSpawn;
@@ -95,7 +95,7 @@ class World {
       
       if (random.nextDouble() < 0.7) {
         tiles[y][x] = 'water';
-        water['river_$x_$y'] = Offset(x.toDouble(), y.toDouble());
+        water[Offset(x.toDouble(), y.toDouble())] = 'river';
         riverPaths.add(Offset(x.toDouble(), y.toDouble()));
       }
       
@@ -205,7 +205,7 @@ class World {
           tiles[y][x] != 'wood_floor' && 
           tiles[y][x] != 'wood_wall' &&
           random.nextDouble() < 0.7) {
-        trees['tree_$x_$y'] = Offset(x.toDouble(), y.toDouble());
+        trees[Offset(x.toDouble(), y.toDouble())] = 'tree';
       }
     }
   }
@@ -220,7 +220,7 @@ class World {
           tiles[y][x] != 'wood_floor' && 
           tiles[y][x] != 'wood_wall' &&
           random.nextDouble() < 0.6) {
-        rocks['rock_$x_$y'] = Offset(x.toDouble(), y.toDouble());
+        rocks[Offset(x.toDouble(), y.toDouble())] = 'rock';
       }
     }
   }
@@ -238,11 +238,11 @@ class World {
           random.nextDouble() < 0.5) {
         
         if (random.nextDouble() < 0.4) {
-          plants['berry_bush_$x_$y'] = Offset(x.toDouble(), y.toDouble());
+          plants[Offset(x.toDouble(), y.toDouble())] = 'berry_bush';
         } else if (random.nextDouble() < 0.6) {
-          plants['flower_$x_$y'] = Offset(x.toDouble(), y.toDouble());
+          plants[Offset(x.toDouble(), y.toDouble())] = 'flower';
         } else {
-          plants['grass_tall_$x_$y'] = Offset(x.toDouble(), y.toDouble());
+          plants[Offset(x.toDouble(), y.toDouble())] = 'grass_tall';
         }
       }
     }
@@ -259,11 +259,11 @@ class World {
           tiles[y][x] != 'wood_wall') {
         
         if (random.nextDouble() < 0.4) {
-          animals['rabbit_$x_$y'] = Offset(x.toDouble(), y.toDouble());
+          animals[Offset(x.toDouble(), y.toDouble())] = 'rabbit';
         } else if (random.nextDouble() < 0.7) {
-          animals['deer_$x_$y'] = Offset(x.toDouble(), y.toDouble());
+          animals[Offset(x.toDouble(), y.toDouble())] = 'deer';
         } else {
-          animals['bird_$x_$y'] = Offset(x.toDouble(), y.toDouble());
+          animals[Offset(x.toDouble(), y.toDouble())] = 'bird';
         }
       }
     }
@@ -282,7 +282,7 @@ class World {
             double dist = sqrt(pow(x - centerX, 2) + pow(y - centerY, 2));
             if (dist < lakeSize && random.nextDouble() < 0.6) {
               tiles[y][x] = 'water';
-              water['lake_$x_$y'] = Offset(x.toDouble(), y.toDouble());
+              water[Offset(x.toDouble(), y.toDouble())] = 'lake';
             }
           }
         }

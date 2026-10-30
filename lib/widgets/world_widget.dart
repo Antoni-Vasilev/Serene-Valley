@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../models/world.dart';
 import '../models/game_state.dart';
 import 'tile_widget.dart';
+import 'player_widget.dart';
 
 class WorldWidget extends StatelessWidget {
   final World world;
@@ -34,6 +35,12 @@ class WorldWidget extends StatelessWidget {
         
         // Animals
         ..._buildAnimals(),
+        
+        // Player
+        PlayerWidget(
+          player: gameState.player,
+          tileSize: tileSize,
+        ),
         
         // Overlay for night
         if (!world.isDay)
@@ -95,8 +102,8 @@ class WorldWidget extends StatelessWidget {
       if (_isVisible(x, y)) {
         objects.add(
           Positioned(
-            left: x * tileSize,
-            top: y * tileSize,
+            left: entry.key.dx * tileSize,
+            top: entry.key.dy * tileSize,
             child: _buildTree(tileSize),
           ),
         );
@@ -111,8 +118,8 @@ class WorldWidget extends StatelessWidget {
       if (_isVisible(x, y)) {
         objects.add(
           Positioned(
-            left: x * tileSize,
-            top: y * tileSize,
+            left: entry.key.dx * tileSize,
+            top: entry.key.dy * tileSize,
             child: _buildRock(tileSize),
           ),
         );
@@ -127,8 +134,8 @@ class WorldWidget extends StatelessWidget {
       if (_isVisible(x, y)) {
         objects.add(
           Positioned(
-            left: x * tileSize,
-            top: y * tileSize,
+            left: entry.key.dx * tileSize,
+            top: entry.key.dy * tileSize,
             child: _buildWaterObject(tileSize, entry.value),
           ),
         );
@@ -143,8 +150,8 @@ class WorldWidget extends StatelessWidget {
       if (_isVisible(x, y)) {
         objects.add(
           Positioned(
-            left: x * tileSize,
-            top: y * tileSize,
+            left: entry.key.dx * tileSize,
+            top: entry.key.dy * tileSize,
             child: _buildPlant(tileSize, entry.value),
           ),
         );
@@ -190,8 +197,8 @@ class WorldWidget extends StatelessWidget {
       if (_isVisible(x, y)) {
         animals.add(
           Positioned(
-            left: x * tileSize,
-            top: y * tileSize,
+            left: entry.key.dx * tileSize,
+            top: entry.key.dy * tileSize,
             child: _buildAnimal(tileSize, entry.value),
           ),
         );
@@ -598,9 +605,9 @@ class WorldWidget extends StatelessWidget {
             color: Colors.brown,
             borderRadius: BorderRadius.circular(size * 0.1),
           ),
-          child: Icon(
+          child: const Icon(
             Icons.house,
-            size: size * 0.4,
+            size: 16,
             color: Colors.white,
           ),
         ),

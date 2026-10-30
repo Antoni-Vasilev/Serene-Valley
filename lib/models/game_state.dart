@@ -129,7 +129,7 @@ class GameState with ChangeNotifier {
     
     // Check for trees
     for (var entry in world.trees.entries) {
-      if (entry.value.dx.floor() == tileX && entry.value.dy.floor() == tileY) {
+      if (entry.key.dx.floor() == tileX && entry.key.dy.floor() == tileY) {
         interactionTarget = 'tree';
         return;
       }
@@ -137,7 +137,7 @@ class GameState with ChangeNotifier {
     
     // Check for rocks
     for (var entry in world.rocks.entries) {
-      if (entry.value.dx.floor() == tileX && entry.value.dy.floor() == tileY) {
+      if (entry.key.dx.floor() == tileX && entry.key.dy.floor() == tileY) {
         interactionTarget = 'rock';
         return;
       }
@@ -145,7 +145,7 @@ class GameState with ChangeNotifier {
     
     // Check for water
     for (var entry in world.water.entries) {
-      if (entry.value.dx.floor() == tileX && entry.value.dy.floor() == tileY) {
+      if (entry.key.dx.floor() == tileX && entry.key.dy.floor() == tileY) {
         interactionTarget = 'water';
         return;
       }
@@ -153,16 +153,16 @@ class GameState with ChangeNotifier {
     
     // Check for plants
     for (var entry in world.plants.entries) {
-      if (entry.value.dx.floor() == tileX && entry.value.dy.floor() == tileY) {
-        interactionTarget = 'berry_bush';
+      if (entry.key.dx.floor() == tileX && entry.key.dy.floor() == tileY) {
+        interactionTarget = world.plants[entry.key]!;
         return;
       }
     }
     
     // Check for animals
     for (var entry in world.animals.entries) {
-      if (entry.value.dx.floor() == tileX && entry.value.dy.floor() == tileY) {
-        interactionTarget = 'animal';
+      if (entry.key.dx.floor() == tileX && entry.key.dy.floor() == tileY) {
+        interactionTarget = world.animals[entry.key]!;
         return;
       }
     }
@@ -188,24 +188,28 @@ class GameState with ChangeNotifier {
       case 'tree':
         if (player.selectedTool == 'axe' || player.selectedTool == 'none') {
           // Find and remove the tree
-          String treeKey = 'tree_${tileX}_${tileY}';
-          if (world.trees.containsKey(treeKey)) {
-            world.trees.remove(treeKey);
-            player.addItem('wood', 3);
-            player.addExperience(5);
-            currentAction = 'Chopped tree! +3 Wood';
+          for (var entry in world.trees.entries.toList()) {
+            if (entry.key.dx.floor() == tileX && entry.key.dy.floor() == tileY) {
+              world.trees.remove(entry.key);
+              player.addItem('wood', 3);
+              player.addExperience(5);
+              currentAction = 'Chopped tree! +3 Wood';
+              break;
+            }
           }
         }
         break;
         
       case 'rock':
         if (player.selectedTool == 'pickaxe' || player.selectedTool == 'none') {
-          String rockKey = 'rock_${tileX}_${tileY}';
-          if (world.rocks.containsKey(rockKey)) {
-            world.rocks.remove(rockKey);
-            player.addItem('stone', 2);
-            player.addExperience(5);
-            currentAction = 'Mined rock! +2 Stone';
+          for (var entry in world.rocks.entries.toList()) {
+            if (entry.key.dx.floor() == tileX && entry.key.dy.floor() == tileY) {
+              world.rocks.remove(entry.key);
+              player.addItem('stone', 2);
+              player.addExperience(5);
+              currentAction = 'Mined rock! +2 Stone';
+              break;
+            }
           }
         }
         break;
@@ -223,17 +227,21 @@ class GameState with ChangeNotifier {
         break;
         
       case 'berry_bush':
-        String plantKey = 'berry_bush_${tileX}_${tileY}';
-        if (world.plants.containsKey(plantKey)) {
-          world.plants.remove(plantKey);
-          player.addItem('berry', 2);
-          player.addExperience(3);
-          currentAction = 'Picked berries! +2 Berries';
+        for (var entry in world.plants.entries.toList()) {
+          if (entry.key.dx.floor() == tileX && entry.key.dy.floor() == tileY && entry.value == 'berry_bush') {
+            world.plants.remove(entry.key);
+            player.addItem('berry', 2);
+            player.addExperience(3);
+            currentAction = 'Picked berries! +2 Berries';
+            break;
+          }
         }
         break;
         
-      case 'animal':
-        currentAction = 'The animal ran away!';
+      case 'rabbit':
+      case 'deer':
+      case 'bird':
+        currentAction = 'The ${interactionTarget} ran away!';
         break;
         
       case 'village':
@@ -344,7 +352,7 @@ class GameState with ChangeNotifier {
 
   void rest() {
     player.energy = (player.energy + 1).clamp(0, player.maxEnergy);
-    player.hunger = (player.hunger - 0.1).clamp(0, player.maxHunger);
+    player.hunger = (player.hunger - 0.1).clamp(0, player.maxHunger).floor();
     
     if (player.hunger > 50 && _random.nextDouble() < 0.01) {
       player.heal(1);

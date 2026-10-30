@@ -233,11 +233,11 @@ class HUDWidget extends StatelessWidget {
       case 'pickaxe':
         return Icons.minimize;
       case 'fishing_rod':
-        return Icons.fishing;
+        return Icons.catching_pokemon;
       case 'stick':
         return Icons.linear_scale;
       case 'wooden_sword':
-        return Icons.sword;
+        return Icons.yard;
       case 'campfire':
         return Icons.fireplace;
       default:
@@ -356,19 +356,19 @@ class HUDWidget extends StatelessWidget {
       case 'berry':
         return Icons.local_florist;
       case 'fish':
-        return Icons.fish;
+        return Icons.catching_pokemon;
       case 'axe':
         return Icons.agriculture;
       case 'pickaxe':
         return Icons.minimize;
       case 'fishing_rod':
-        return Icons.fishing;
+        return Icons.catching_pokemon;
       case 'stick':
         return Icons.linear_scale;
       case 'seeds':
         return Icons.grass;
       case 'wooden_sword':
-        return Icons.agriculture;
+        return Icons.yard;
       case 'campfire':
         return Icons.fireplace;
       default:
@@ -388,7 +388,7 @@ class HUDWidget extends StatelessWidget {
         'name': 'Wooden Sword',
         'id': 'wooden_sword',
         'ingredients': {'wood': 2, 'stick': 1},
-        'icon': Icons.agriculture,
+        'icon': Icons.yard,
       },
       {
         'name': 'Campfire',
@@ -400,7 +400,7 @@ class HUDWidget extends StatelessWidget {
         'name': 'Fishing Rod',
         'id': 'fishing_rod',
         'ingredients': {'stick': 2, 'wood': 1},
-        'icon': Icons.fishing,
+        'icon': Icons.catching_pokemon,
       },
     ];
 

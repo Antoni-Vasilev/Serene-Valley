@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../graphics/palette.dart';
+import '../models/level.dart';
 
 /// Flat colours for terrain tiles, used by the map.
 class TileColors {
@@ -27,6 +28,10 @@ class TileColors {
         return Color(Palette.cobble[2]);
       case 'farmland':
         return Color(Palette.soil[2]);
+      case 'cave_floor':
+        return Color(Palette.caveFloor[3]);
+      case 'cave_wall':
+        return Color(Palette.caveRock[1]);
       case 'void':
         return Colors.black;
       default:
@@ -35,5 +40,5 @@ class TileColors {
   }
 
   /// A stable pseudo-random value in 0..1 for a tile.
-  static double hash(int x, int y) => (((x * 73856093) ^ (y * 19349663)) & 0xFF) / 255.0;
+  static double hash(int x, int y) => tileHash(x, y);
 }

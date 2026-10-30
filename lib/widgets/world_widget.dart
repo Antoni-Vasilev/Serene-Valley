@@ -4,6 +4,8 @@ import 'package:flutter/material.dart';
 import '../graphics/textures.dart';
 import '../graphics/ui_textures.dart';
 import '../models/game_state.dart';
+import '../models/level.dart';
+import '../models/mine.dart';
 import '../models/npc.dart';
 import 'pixel_ui.dart';
 import 'tile_widget.dart';
@@ -39,6 +41,29 @@ class WorldWidget extends StatelessWidget {
   }
 }
 
+/// A light in the dark: it clears the darkness within [radius] tiles of
+/// [centre], and may tint its surroundings with a [glow].
+class _Light {
+  final Offset centre;
+  final double radius;
+  final double strength;
+  final Color? glow;
+  final double glowRadius;
+  final double glowStrength;
+  // Held lights shine at full strength out to half their radius.
+  final bool steady;
+
+  const _Light(
+    this.centre,
+    this.radius,
+    this.strength, {
+    this.glow,
+    this.glowRadius = 0,
+    this.glowStrength = 0,
+    this.steady = false,
+  });
+}
+
 class WorldPainter extends CustomPainter {
   final GameState gameState;
   final double tileSize;
@@ -60,11 +85,13 @@ class WorldPainter extends CustomPainter {
   }) : super(repaint: gameState);
 
   static const _sides = [Point(0, -1), Point(1, 0), Point(0, 1), Point(-1, 0)];
+  static const _fireGlow = Color(0xFFFF9800);
 
   @override
   void paint(Canvas canvas, Size size) {
     final textures = Textures.instance;
-    final world = gameState.world;
+    final level = gameState.level;
+    final mine = gameState.underground ? gameState.mine : null;
     final camera = gameState.cameraOffset;
     final clock = gameState.clock;
 
@@ -78,14 +105,14 @@ class WorldPainter extends CustomPainter {
     Offset toScreen(Offset tile) => Offset(tx + tile.dx * px, ty + tile.dy * px);
 
     // Area outside the world.
-    _paint.color = const Color(0xFF1a1a2e);
+    _paint.color = mine != null ? const Color(0xFF070606) : const Color(0xFF1a1a2e);
     canvas.drawRect(Offset.zero & size, _paint);
 
     // Visible tiles, with a margin for trees and roofs that reach over.
     final minX = max(0, (-tx / px).floor() - 1);
     final minY = max(0, (-ty / px).floor() - 1);
-    final maxX = min(world.width - 1, ((size.width - tx) / px).ceil() + 1);
-    final maxY = min(world.height - 1, ((size.height - ty) / px).ceil() + 2);
+    final maxX = min(level.width - 1, ((size.width - tx) / px).ceil() + 1);
+    final maxY = min(level.height - 1, ((size.height - ty) / px).ceil() + 2);
     bool visible(Offset p) => p.dx >= minX - 1 && p.dx <= maxX + 1 && p.dy >= minY - 1 && p.dy <= maxY + 2;
 
     canvas.save();
@@ -93,14 +120,20 @@ class WorldPainter extends CustomPainter {
     canvas.translate(tx, ty);
     canvas.scale(px);
 
-    _drawTerrain(canvas, textures, minX, minY, maxX, maxY, clock);
-    _drawGround(canvas, textures, visible);
-    _drawStanding(canvas, textures, visible, clock, minX, minY, maxX, maxY);
+    if (mine != null) {
+      _drawMineTerrain(canvas, textures, mine, minX, minY, maxX, maxY, clock);
+      _drawMineGround(canvas, textures, mine, visible);
+      _drawMineStanding(canvas, textures, mine, visible, clock);
+    } else {
+      _drawTerrain(canvas, textures, minX, minY, maxX, maxY, clock);
+      _drawGround(canvas, textures, visible);
+      _drawStanding(canvas, textures, visible, clock, minX, minY, maxX, maxY);
+    }
     _drawHighlight(canvas, textures, clock);
 
     canvas.restore();
 
-    _drawNight(canvas, size, px, toScreen, clock);
+    _drawDarkness(canvas, size, px, toScreen, clock);
     _drawNames(canvas, toScreen);
     _drawQuestMarker(canvas, px, toScreen, clock);
     _drawFloatingTexts(canvas, toScreen);
@@ -149,7 +182,6 @@ class WorldPainter extends CustomPainter {
     final waterFrame = (clock * 3).floor() % 4;
     final foamFrame = (clock * 1.5).floor() % 2;
     String side(int x, int y, int s) => world.getTileAt(x + _sides[s].x, y + _sides[s].y);
-    bool wet(String t) => t == 'water' || t == 'bridge' || t == 'void';
 
     for (int y = minY; y <= maxY; y++) {
       for (int x = minX; x <= maxX; x++) {
@@ -159,18 +191,7 @@ class WorldPainter extends CustomPainter {
         final fy = y.toDouble();
 
         if (type == 'water') {
-          _image(canvas, textures.water[v][waterFrame], fx, fy);
-          final dry = [for (var s = 0; s < 4; s++) !wet(side(x, y, s))];
-          for (var s = 0; s < 4; s++) {
-            if (dry[s]) _image(canvas, textures.shore[s][foamFrame], fx, fy);
-          }
-          // Corners, clockwise from the top left, between two wet sides.
-          for (var corner = 0; corner < 4; corner++) {
-            final a = (corner + 3) % 4;
-            final b = corner;
-            final diagonal = world.getTileAt(x + _sides[a].x + _sides[b].x, y + _sides[a].y + _sides[b].y);
-            if (!dry[a] && !dry[b] && !wet(diagonal)) _image(canvas, textures.shoreCorner[corner], fx, fy);
-          }
+          _drawWater(canvas, textures, world, x, y, waterFrame, foamFrame);
           continue;
         }
 
@@ -220,6 +241,67 @@ class WorldPainter extends CustomPainter {
     }
   }
 
+  /// A water tile with shallows and foam along its shores.
+  void _drawWater(Canvas canvas, Textures textures, Level level, int x, int y, int waterFrame, int foamFrame) {
+    String side(int s) => level.getTileAt(x + _sides[s].x, y + _sides[s].y);
+    bool wet(String t) => t == 'water' || t == 'bridge' || t == 'void';
+    final fx = x.toDouble();
+    final fy = y.toDouble();
+
+    _image(canvas, textures.water[_variant(x, y)][waterFrame], fx, fy);
+    final dry = [for (var s = 0; s < 4; s++) !wet(side(s))];
+    for (var s = 0; s < 4; s++) {
+      if (dry[s]) _image(canvas, textures.shore[s][foamFrame], fx, fy);
+    }
+    // Corners, clockwise from the top left, between two wet sides.
+    for (var corner = 0; corner < 4; corner++) {
+      final a = (corner + 3) % 4;
+      final b = corner;
+      final diagonal = level.getTileAt(x + _sides[a].x + _sides[b].x, y + _sides[a].y + _sides[b].y);
+      if (!dry[a] && !dry[b] && !wet(diagonal)) _image(canvas, textures.shoreCorner[corner], fx, fy);
+    }
+  }
+
+  /// Tunnels, rock and the underground pool. A wall with floor in front of
+  /// it shows its face; deeper rock shows its dark top.
+  void _drawMineTerrain(Canvas canvas, Textures textures, Mine mine, int minX, int minY, int maxX, int maxY, double clock) {
+    final waterFrame = (clock * 1.5).floor() % 4;
+    final foamFrame = (clock * 0.8).floor() % 2;
+    String side(int x, int y, int s) => mine.getTileAt(x + _sides[s].x, y + _sides[s].y);
+    bool rock(String t) => t == 'cave_wall' || t == 'void';
+
+    for (int y = minY; y <= maxY; y++) {
+      for (int x = minX; x <= maxX; x++) {
+        final type = mine.tiles[y][x];
+        final v = _variant(x, y);
+        final fx = x.toDouble();
+        final fy = y.toDouble();
+
+        if (type == 'water') {
+          _drawWater(canvas, textures, mine, x, y, waterFrame, foamFrame);
+        } else if (type == 'cave_wall') {
+          if (rock(side(x, y, 2))) {
+            _image(canvas, textures.caveTop[v], fx, fy);
+            for (final s in const [0, 1, 3]) {
+              if (!rock(side(x, y, s))) _image(canvas, textures.caveRim[s], fx, fy);
+            }
+          } else {
+            _image(canvas, textures.caveFace[v], fx, fy);
+            if (!rock(side(x, y, 3))) _image(canvas, textures.caveFaceLeft, fx, fy);
+            if (!rock(side(x, y, 1))) _image(canvas, textures.caveFaceRight, fx, fy);
+          }
+        } else {
+          _image(canvas, textures.caveFloor[v], fx, fy);
+          if (rock(side(x, y, 0))) _image(canvas, textures.caveShadow, fx, fy);
+          if (mine.rails.contains(Point(x, y))) _image(canvas, textures.rails, fx, fy);
+          for (var s = 0; s < 4; s++) {
+            if (side(x, y, s) == 'water') _image(canvas, textures.landEdge[s], fx, fy);
+          }
+        }
+      }
+    }
+  }
+
   // ---------------------------------------------------------------------------
   // Things lying flat on the ground, and the shadows of standing things.
 
@@ -257,8 +339,15 @@ class WorldPainter extends CustomPainter {
         _centred(canvas, textures.shadowMedium, p.dx + 0.5, p.dy + 0.92);
       }
     }
-    for (final cave in world.caveEntrances) {
-      if (visible(cave)) _image(canvas, textures.cave, cave.dx, cave.dy);
+    for (final (i, cave) in world.caveEntrances.indexed) {
+      if (!visible(cave)) continue;
+      // The first cave is the old mine.
+      final image = i > 0
+          ? textures.cave
+          : world.mineOpen
+              ? textures.mineEntrance
+              : textures.boardedMineEntrance;
+      _image(canvas, image, cave.dx, cave.dy);
     }
     if (visible(world.bed)) _image(canvas, textures.bed, world.bed.dx, world.bed.dy);
 
@@ -271,7 +360,24 @@ class WorldPainter extends CustomPainter {
     for (final animal in world.animals.values) {
       if (visible(animal)) _centred(canvas, textures.shadowSmall, animal.dx + 0.5, animal.dy + 0.94);
     }
-    for (final npc in world.npcs) {
+    _drawPeopleShadows(canvas, textures, world.npcs, visible);
+  }
+
+  void _drawMineGround(Canvas canvas, Textures textures, Mine mine, bool Function(Offset) visible) {
+    for (final p in mine.mushrooms.values) {
+      if (visible(p)) _image(canvas, textures.mushrooms[_variant(p.dx.toInt(), p.dy.toInt())], p.dx, p.dy);
+    }
+    // The ladder stands against the rock face, its top in the shaft above.
+    _standing(canvas, textures.ladder, mine.ladder.x.toDouble(), mine.ladder.y.toDouble());
+
+    for (final rock in [...mine.rocks.values, if (mine.cart case final cart?) cart]) {
+      if (visible(rock)) _centred(canvas, textures.shadowMedium, rock.dx + 0.5, rock.dy + 0.92);
+    }
+    _drawPeopleShadows(canvas, textures, mine.npcs, visible);
+  }
+
+  void _drawPeopleShadows(Canvas canvas, Textures textures, List<Npc> npcs, bool Function(Offset) visible) {
+    for (final npc in npcs) {
       if (visible(npc.position)) _centred(canvas, textures.shadowSmall, npc.position.dx + 0.5, npc.position.dy + 0.96);
     }
     final player = gameState.player.position;
@@ -300,10 +406,7 @@ class WorldPainter extends CustomPainter {
       if (!visible(p)) continue;
       final x = p.dx.toInt();
       final y = p.dy.toInt();
-      final forest = world.getTileAt(x, y) == 'forest_grass';
-      final image = forest && _variant(x, y, 2) == 0
-          ? textures.pines[_variant(y, x, 2)]
-          : textures.oaks[_variant(x, y, 3)];
+      final image = world.isPine(x, y) ? textures.pines[_variant(y, x, 2)] : textures.oaks[_variant(x, y, 3)];
       final shake = _shake(entry.key);
       add(p.dy + 1, () => _standing(canvas, image, p.dx + shake.dx, p.dy));
     }
@@ -329,11 +432,13 @@ class WorldPainter extends CustomPainter {
       add(p.dy + 1, () => _standing(canvas, image, p.dx, p.dy));
     }
 
-    final fires = [(world.firePit, world.firePitBuilt), for (final c in world.campfires) (c, true)];
-    for (final (i, (p, lit)) in fires.indexed) {
-      if (!visible(p)) continue;
-      final image = lit ? textures.fire[((clock * 8).floor() + i) % 3] : textures.coldFirePit;
-      add(p.dy + 1, () => _image(canvas, image, p.dx, p.dy));
+    _addFires(add, canvas, textures, [(world.firePit, world.firePitBuilt), for (final c in world.campfires) (c, true)],
+        visible, clock);
+
+    final forge = _forgeSpot;
+    if (visible(forge)) {
+      final image = world.forgeBuilt ? textures.forge[(clock * 6).floor() % 3] : textures.forgeRuin;
+      add(forge.dy + 1, () => _image(canvas, image, forge.dx, forge.dy + 1 - image.height / 16));
     }
 
     for (int y = minY; y <= maxY; y++) {
@@ -359,19 +464,8 @@ class WorldPainter extends CustomPainter {
       add(p.dy + 1, () => _image(canvas, image, p.dx, p.dy - (hop ? 2 / 16 : 0)));
     }
 
-    for (final npc in world.npcs) {
-      if (!visible(npc.position)) continue;
-      final image = textures.character(npc.look)[_facing(npc)]!.first;
-      add(npc.position.dy + 1, () => _image(canvas, image, npc.position.dx, npc.position.dy + 1 - 17 / 16));
-    }
-
-    final player = gameState.player;
-    final frames = textures.character(CharacterLook.player)[player.direction] ??
-        textures.character(CharacterLook.player)['down']!;
-    final step = gameState.isMoving ? const [0, 1, 0, 2][(gameState.walkTime * 8).floor() % 4] : 0;
-    add(player.position.dy + 0.5, () {
-      _image(canvas, frames[step], player.position.dx - 0.5, player.position.dy + 0.5 - 17 / 16);
-    });
+    _addNpcs(add, canvas, textures, world.npcs, visible);
+    _addPlayer(add, canvas, textures, clock);
 
     for (final house in world.houses) {
       if (!visible(house.topLeft) && !visible(house.bottomRight)) continue;
@@ -382,6 +476,114 @@ class WorldPainter extends CustomPainter {
     for (final sprite in sprites) {
       sprite.$2();
     }
+  }
+
+  void _drawMineStanding(Canvas canvas, Textures textures, Mine mine, bool Function(Offset) visible, double clock) {
+    final sprites = <(double, VoidCallback)>[];
+    void add(double depth, VoidCallback draw) => sprites.add((depth, draw));
+
+    for (final entry in mine.rocks.entries) {
+      final p = entry.value;
+      if (!visible(p)) continue;
+      final v = _variant(p.dx.toInt(), p.dy.toInt());
+      final image = entry.key.startsWith('iron')
+          ? textures.oreRocks[v]
+          : entry.key.startsWith('crystal')
+              ? textures.crystals[v]
+              : textures.mineRocks[v];
+      final shake = _shake(entry.key);
+      add(p.dy + 1, () => _standing(canvas, image, p.dx + shake.dx, p.dy));
+    }
+    for (final web in mine.webs.values) {
+      if (visible(web)) add(web.dy + 1, () => _image(canvas, textures.cobweb, web.dx, web.dy));
+    }
+    for (final entry in mine.rubble.entries) {
+      final p = entry.value;
+      if (!visible(p)) continue;
+      final shake = _shake(entry.key);
+      add(p.dy + 1, () => _standing(canvas, textures.rubble, p.dx + shake.dx, p.dy));
+    }
+    for (final frame in mine.frames.values) {
+      if (visible(frame)) add(frame.dy + 1, () => _standing(canvas, textures.timberFrame, frame.dx, frame.dy));
+    }
+    if (mine.cart case final cart?) {
+      if (visible(cart)) add(cart.dy + 1, () => _standing(canvas, textures.mineCart, cart.dx, cart.dy));
+    }
+    _addFires(add, canvas, textures, [for (final c in mine.campfires) (c, true)], visible, clock);
+    _addNpcs(add, canvas, textures, mine.npcs, visible);
+    _addPlayer(add, canvas, textures, clock);
+
+    sprites.sort((a, b) => a.$1.compareTo(b.$1));
+    for (final sprite in sprites) {
+      sprite.$2();
+    }
+  }
+
+  /// The forge's top-left tile.
+  Offset get _forgeSpot {
+    final t = gameState.world.forgeTiles.first;
+    return Offset(t.x.toDouble(), t.y.toDouble());
+  }
+
+  void _addFires(
+    void Function(double, VoidCallback) add,
+    Canvas canvas,
+    Textures textures,
+    List<(Offset, bool)> fires,
+    bool Function(Offset) visible,
+    double clock,
+  ) {
+    for (final (i, (p, lit)) in fires.indexed) {
+      if (!visible(p)) continue;
+      final image = lit ? textures.fire[((clock * 8).floor() + i) % 3] : textures.coldFirePit;
+      add(p.dy + 1, () => _image(canvas, image, p.dx, p.dy));
+    }
+  }
+
+  void _addNpcs(
+    void Function(double, VoidCallback) add,
+    Canvas canvas,
+    Textures textures,
+    List<Npc> npcs,
+    bool Function(Offset) visible,
+  ) {
+    for (final npc in npcs) {
+      if (!visible(npc.position)) continue;
+      final image = textures.character(npc.look)[_facing(npc)]!.first;
+      add(npc.position.dy + 1, () => _image(canvas, image, npc.position.dx, npc.position.dy + 1 - 17 / 16));
+    }
+  }
+
+  /// The player, with a torch or lantern in hand when it's dark.
+  void _addPlayer(void Function(double, VoidCallback) add, Canvas canvas, Textures textures, double clock) {
+    final player = gameState.player;
+    final frames = textures.character(CharacterLook.player)[player.direction] ??
+        textures.character(CharacterLook.player)['down']!;
+    final step = gameState.isMoving ? const [0, 1, 0, 2][(gameState.walkTime * 8).floor() % 4] : 0;
+    final held = gameState.heldLight;
+    add(player.position.dy + 0.5, () {
+      final x = player.position.dx - 0.5;
+      final y = player.position.dy + 0.5 - 17 / 16;
+      void drawHeld() {
+        if (held == null) return;
+        final image = held == 'lantern' ? textures.heldLantern : textures.heldTorch[(clock * 8).floor() % 3];
+        // In the hand on the side the player faces. From behind, it is held
+        // up past the shoulder, so the flame shows beside the head.
+        final hand = switch (player.direction) {
+          'up' => 13,
+          'left' => 3,
+          'right' => 12,
+          _ => 11,
+        };
+        final grip = held == 'lantern' ? 3 : 2;
+        _image(canvas, image, x + (hand - grip) / 16, y + (14 - image.height) / 16);
+      }
+
+      // Seen from behind, the light is in front of the player.
+      if (player.direction == 'up') drawHeld();
+      _image(canvas, frames[step], x, y);
+      if (player.direction != 'up') drawHeld();
+    });
   }
 
   void _drawFence(Canvas canvas, Textures textures, int x, int y) {
@@ -460,65 +662,117 @@ class WorldPainter extends CustomPainter {
   // ---------------------------------------------------------------------------
   // Screen-space overlays
 
-  void _drawNight(Canvas canvas, Size size, double px, Offset Function(Offset) toScreen, double clock) {
-    final world = gameState.world;
-    final darkness = (1 - world.getLightLevel()) * 0.85;
+  /// Night in the valley, or the dark of the mine, with holes cut around
+  /// every light.
+  void _drawDarkness(Canvas canvas, Size size, double px, Offset Function(Offset) toScreen, double clock) {
+    final underground = gameState.underground;
+    final darkness = underground ? 0.97 : (1 - gameState.world.getLightLevel()) * 0.85;
     if (darkness < 0.01) return;
 
     final screen = Offset.zero & size;
-    final fires = world.fires;
-    final windows = [
-      for (final house in world.houses)
-        for (int x = house.left.toInt(); x < house.right; x++)
-          if (_isWindow(house, x)) Offset(x + 0.5, house.bottom - 0.6),
-    ];
+    final lights = _lights(clock);
 
-    // Darken everything, then cut soft holes around the lights.
     canvas.saveLayer(screen, Paint());
-    canvas.drawRect(screen, Paint()..color = const Color(0xFF0A0A2A).withValues(alpha: darkness));
+    final shade = underground ? const Color(0xFF050404) : const Color(0xFF0A0A2A);
+    canvas.drawRect(screen, Paint()..color = shade.withValues(alpha: darkness));
     final cut = Paint()..blendMode = BlendMode.dstOut;
-    void light(Offset tile, double radius, double strength) {
-      final c = toScreen(tile);
-      final r = radius * px;
+    for (final light in lights) {
+      final c = toScreen(light.centre);
+      final r = light.radius * px;
+      if (!screen.inflate(r).contains(c)) continue;
+      final core = Colors.black.withValues(alpha: light.strength);
       cut.shader = RadialGradient(
-        colors: [Colors.black.withValues(alpha: strength), Colors.transparent],
+        colors: [core, if (light.steady) core, Colors.transparent],
+        stops: light.steady ? const [0, 0.45, 1] : null,
       ).createShader(Rect.fromCircle(center: c, radius: r));
       canvas.drawCircle(c, r, cut);
     }
-
-    for (int i = 0; i < fires.length; i++) {
-      light(fires[i] + const Offset(0.5, 0.5), 4.5 + 0.15 * sin(clock * 6 + i), 1.0);
-    }
-    for (final window in windows) {
-      light(window, 1.8, 0.75);
-    }
-    light(gameState.player.position, 2.2, 0.6);
     canvas.restore();
 
-    // Warm glow around fires and windows.
-    void glow(Offset tile, double radius, double strength) {
-      final c = toScreen(tile);
-      final r = radius * px;
+    // A warm or coloured glow around the lights.
+    for (final light in lights) {
+      final glow = light.glow;
+      if (glow == null) continue;
+      final c = toScreen(light.centre);
+      final r = light.glowRadius * px;
+      if (!screen.inflate(r).contains(c)) continue;
       canvas.drawCircle(
         c,
         r,
         Paint()
           ..shader = RadialGradient(
-            colors: [const Color(0xFFFF9800).withValues(alpha: strength * darkness), Colors.transparent],
+            colors: [glow.withValues(alpha: light.glowStrength * darkness), Colors.transparent],
           ).createShader(Rect.fromCircle(center: c, radius: r)),
       );
     }
+  }
 
-    for (final fire in fires) {
-      glow(fire + const Offset(0.5, 0.5), 3, 0.3);
+  List<_Light> _lights(double clock) {
+    final level = gameState.level;
+    final lights = <_Light>[
+      for (final (i, fire) in level.fires.indexed)
+        _Light(fire + const Offset(0.5, 0.5), 4.5 + 0.15 * sin(clock * 6 + i), 1.0,
+            glow: _fireGlow, glowRadius: 3, glowStrength: 0.3),
+    ];
+
+    if (level is Mine) {
+      for (final m in level.mushrooms.values) {
+        lights.add(_Light(m + const Offset(0.5, 0.6), 1.7, 0.55,
+            glow: const Color(0xFF4FC6C8), glowRadius: 1.2, glowStrength: 0.35));
+      }
+      for (final e in level.rocks.entries) {
+        if (!e.key.startsWith('crystal')) continue;
+        lights.add(_Light(e.value + const Offset(0.5, 0.5), 1.4, 0.45,
+            glow: const Color(0xFF9A7AF0), glowRadius: 1.1, glowStrength: 0.35));
+      }
+      // Daylight, or moonlight, falls down the shaft.
+      final day = gameState.world.getLightLevel();
+      lights.add(_Light(Offset(level.ladder.x + 0.5, level.ladder.y + 0.4), 3.2, 0.35 + 0.5 * day,
+          glow: const Color(0xFFCFE6F5), glowRadius: 2, glowStrength: 0.05 + 0.15 * day));
+    } else {
+      final world = gameState.world;
+      for (final house in world.houses) {
+        for (int x = house.left.toInt(); x < house.right; x++) {
+          if (!_isWindow(house, x)) continue;
+          lights.add(_Light(Offset(x + 0.5, house.bottom - 0.6), 1.8, 0.75,
+              glow: _fireGlow, glowRadius: 1.2, glowStrength: 0.25));
+        }
+      }
+      if (world.forgeBuilt) {
+        lights.add(_Light(_forgeSpot + const Offset(0.66, 0.6), 3 + 0.12 * sin(clock * 7), 0.9,
+            glow: _fireGlow, glowRadius: 2.2, glowStrength: 0.35));
+      }
     }
-    for (final window in windows) {
-      glow(window, 1.2, 0.25);
+
+    final player = gameState.player.position;
+    final radius = gameState.lightRadius;
+    // Down in the mine a light carries its full strength out to half its
+    // reach; under the night sky it fades from the middle, warmly tinted.
+    final underground = gameState.underground;
+    switch (gameState.heldLight) {
+      case 'torch':
+        final flicker = 1 + 0.04 * sin(clock * 9) + 0.03 * sin(clock * 23);
+        lights.add(_Light(player, radius * flicker, 1.0,
+            glow: _fireGlow,
+            glowRadius: radius * 0.8,
+            glowStrength: underground ? 0.28 : 0.42,
+            steady: underground));
+        break;
+      case 'lantern':
+        lights.add(_Light(player, radius, 1.0,
+            glow: const Color(0xFFD8C8FF),
+            glowRadius: radius * 0.6,
+            glowStrength: underground ? 0.16 : 0.3,
+            steady: underground));
+        break;
+      default:
+        lights.add(_Light(player, radius, gameState.underground ? 0.55 : 0.6));
     }
+    return lights;
   }
 
   void _drawNames(Canvas canvas, Offset Function(Offset) toScreen) {
-    for (final npc in gameState.world.npcs) {
+    for (final npc in gameState.level.npcs) {
       final centre = npc.position + const Offset(0.5, 0.5);
       if ((centre - gameState.player.position).distance > 3) continue;
       _drawText(canvas, npc.name, toScreen(npc.position + const Offset(0.5, -0.3)), UiColors.cream, 13);
@@ -526,7 +780,7 @@ class WorldPainter extends CustomPainter {
   }
 
   void _drawQuestMarker(Canvas canvas, double px, Offset Function(Offset) toScreen, double clock) {
-    if (gameState.questTargetPosition == null) return;
+    if (!gameState.elderHasNews || gameState.underground) return;
     final elder = gameState.world.npc(Npc.elderId);
     if (elder == null) return;
     final bob = (sin(clock * 3) * 2).roundToDouble();

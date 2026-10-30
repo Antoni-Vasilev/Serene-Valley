@@ -40,8 +40,24 @@ class Sound extends ChangeNotifier with WidgetsBindingObserver {
     'sleep': 1,
     'deny': 2,
     'fanfare': 1,
+    'torch': 1,
+    'fizzle': 1,
+    'swish': 2,
+    'crumble': 1,
+    'smelt': 2,
+    'chime': 2,
+    'climb': 1,
   };
-  static const _loops = ['music_day', 'music_night', 'ambience_day', 'ambience_night', 'river', 'fire'];
+  static const _loops = [
+    'music_day',
+    'music_night',
+    'music_mine',
+    'ambience_day',
+    'ambience_night',
+    'ambience_mine',
+    'river',
+    'fire',
+  ];
   static const _musicVolume = 0.5;
   static const _ambienceVolume = 0.45;
 
@@ -66,6 +82,7 @@ class Sound extends ChangeNotifier with WidgetsBindingObserver {
   double _water = 0;
   double _fire = 0;
   bool _ambience = false;
+  bool _underground = false;
 
   Future<void> init() async {
     try {
@@ -130,12 +147,20 @@ class Sound extends ChangeNotifier with WidgetsBindingObserver {
   }
 
   /// Sets what should be heard: [darkness] runs from 0 by day to 1 at night;
-  /// [water] and [fire] from 0 (far away) to 1 (right next to it). Without
-  /// [ambience], e.g. on the title screen, only the music plays.
-  void setScene({double darkness = 0, double water = 0, double fire = 0, bool ambience = true}) {
+  /// [water] and [fire] from 0 (far away) to 1 (right next to it). The mine
+  /// has music and sounds of its own. Without [ambience], e.g. on the title
+  /// screen, only the music plays.
+  void setScene({
+    double darkness = 0,
+    double water = 0,
+    double fire = 0,
+    bool underground = false,
+    bool ambience = true,
+  }) {
     _darkness = darkness.clamp(0.0, 1.0);
     _water = water.clamp(0.0, 1.0);
     _fire = fire.clamp(0.0, 1.0);
+    _underground = underground;
     _ambience = ambience;
     _updateTargets();
   }
@@ -157,10 +182,13 @@ class Sound extends ChangeNotifier with WidgetsBindingObserver {
   void _updateTargets() {
     final music = musicOn ? _musicVolume : 0.0;
     final ambience = soundOn && _ambience ? _ambienceVolume : 0.0;
-    _target['music_day'] = music * (1 - _darkness);
-    _target['music_night'] = music * _darkness;
-    _target['ambience_day'] = ambience * (1 - _darkness);
-    _target['ambience_night'] = ambience * _darkness;
+    final valley = _underground ? 0.0 : 1.0;
+    _target['music_day'] = music * (1 - _darkness) * valley;
+    _target['music_night'] = music * _darkness * valley;
+    _target['music_mine'] = music * (1 - valley);
+    _target['ambience_day'] = ambience * (1 - _darkness) * valley;
+    _target['ambience_night'] = ambience * _darkness * valley;
+    _target['ambience_mine'] = ambience * (1 - valley);
     _target['river'] = ambience * 1.5 * _water;
     _target['fire'] = ambience * 1.5 * _fire;
   }

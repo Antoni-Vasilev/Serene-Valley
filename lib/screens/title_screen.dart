@@ -3,6 +3,7 @@ import '../audio/sound.dart';
 import '../graphics/textures.dart';
 import '../graphics/ui_textures.dart';
 import '../models/game_state.dart';
+import '../models/quest.dart';
 import '../services/save_service.dart';
 import '../widgets/pixel_ui.dart';
 import '../widgets/sound_toggles.dart';
@@ -118,6 +119,8 @@ class _TitleScreenState extends State<TitleScreen> {
   @override
   Widget build(BuildContext context) {
     final summary = _summary;
+    // The chapter the saved game has reached.
+    final chapter = summary?.chapter ?? 1;
     return Scaffold(
       backgroundColor: const Color(0xFF1F2547),
       body: Stack(
@@ -160,7 +163,8 @@ class _TitleScreenState extends State<TitleScreen> {
                       frame: PixelFrame.plate,
                       padding: const EdgeInsets.symmetric(
                           horizontal: 8, vertical: 2),
-                      child: Text('Chapter 1: The Valley Awakens',
+                      child: Text(
+                          'Chapter $chapter: ${Quest.chapterTitles[chapter]}',
                           style: pixelText(16, color: UiColors.gold)),
                     ),
                     const SizedBox(height: 36),

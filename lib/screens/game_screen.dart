@@ -89,14 +89,14 @@ class _GameScreenState extends State<GameScreen> with SingleTickerProviderStateM
 
   void _updateSound(double dt) {
     final player = gameState.player;
-    final world = gameState.world;
+    final level = gameState.level;
     final moved = (player.position - _lastPosition).distance > 0.001;
     _lastPosition = player.position;
     if (moved && !gameState.isMenuOpen) {
       _stepTimer -= dt;
       if (_stepTimer <= 0) {
         _stepTimer = player.speed < Player.baseSpeed ? 0.42 : 0.3;
-        final ground = world.getTileAt(player.position.dx.floor(), player.position.dy.floor());
+        final ground = level.getTileAt(player.position.dx.floor(), player.position.dy.floor());
         Sound.instance.play(ground == 'wood_floor' || ground == 'bridge' ? 'step_wood' : 'step', volume: 0.6);
       }
     } else {
@@ -112,17 +112,18 @@ class _GameScreenState extends State<GameScreen> with SingleTickerProviderStateM
     var water = double.infinity;
     for (var dy = -5; dy <= 5; dy++) {
       for (var dx = -5; dx <= 5; dx++) {
-        if (world.getTileAt(x + dx, y + dy) == 'water') water = min(water, sqrt(dx * dx + dy * dy));
+        if (level.getTileAt(x + dx, y + dy) == 'water') water = min(water, sqrt(dx * dx + dy * dy));
       }
     }
     var fire = double.infinity;
-    for (final f in world.fires) {
+    for (final f in level.fires) {
       fire = min(fire, (f + const Offset(0.5, 0.5) - player.position).distance);
     }
     Sound.instance.setScene(
-      darkness: (1 - world.getLightLevel()) / 0.85,
+      darkness: (1 - gameState.world.getLightLevel()) / 0.85,
       water: Sound.nearness(water, 6),
       fire: Sound.nearness(fire, 6),
+      underground: gameState.underground,
     );
   }
 

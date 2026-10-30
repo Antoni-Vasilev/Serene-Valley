@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'dart:math';
 import 'farm.dart';
 import 'items.dart';
+import 'level.dart';
+import 'mine.dart';
 import 'npc.dart';
 import 'player.dart';
 import 'quest.dart';
@@ -33,26 +35,45 @@ class FloatingText {
 }
 
 class GameState with ChangeNotifier {
-  static const int saveVersion = 1;
+  static const int saveVersion = 2;
   // How close (in tiles) the player must be to interact with something.
   static const double reach = 1.4;
   static const double _hitbox = 0.28;
+  // How long one torch burns, in seconds.
+  static const double torchSeconds = 150;
+  // How long climbing into or out of the mine takes, in seconds.
+  static const double _travelSeconds = 0.8;
 
   static const Map<String, Map<String, int>> recipes = {
     'stick': {'wood': 1},
     'fishing_rod': {'stick': 2, 'wood': 1},
     'campfire': {'wood': 5, 'stone': 3},
     'wooden_sword': {'wood': 2, 'stick': 1},
+    'torch': {'resin': 1, 'stick': 1},
+    'iron_axe': {'iron_ingot': 2, 'stick': 2},
+    'iron_pickaxe': {'iron_ingot': 3, 'stick': 2},
+    'lantern': {'iron_ingot': 1, 'crystal': 2},
   };
+  // How many items one craft makes, where it is more than one.
+  static const Map<String, int> craftYield = {'torch': 2};
   static const Map<String, int> _craftXp = {
     'stick': 2,
     'fishing_rod': 10,
     'campfire': 15,
     'wooden_sword': 10,
+    'torch': 4,
+    'iron_axe': 25,
+    'iron_pickaxe': 25,
+    'lantern': 30,
   };
 
   Player player;
+  // The valley, where the village is. Its clock is the game's clock.
   World world;
+  // The old mine under the eastern hills, dug out the first time someone
+  // climbs down.
+  Mine? mine;
+  bool underground = false;
 
   // Game state
   bool isPaused = false;
@@ -86,13 +107,18 @@ class GameState with ChangeNotifier {
   String? dialogReply;
   bool showChapterComplete = false;
   bool _chapterJustCompleted = false;
-  // Whether the player has seen the end-of-chapter screen.
-  bool chapterCelebrated = false;
+  // How many chapter endings the player has seen.
+  int chaptersCelebrated = 0;
 
   bool confirmSleep = false;
   // Counts down from 2 seconds through the fade-out and fade-in of sleeping.
   double sleepTimer = 0;
   bool _sleepApplied = false;
+
+  // Counts down through the fade while climbing into or out of the mine.
+  double travelTimer = 0;
+  bool _travelDown = false;
+  bool _travelApplied = false;
 
   final List<FloatingText> floatingTexts = [];
   // The tree or rock that was just hit, which shakes briefly.
@@ -117,35 +143,73 @@ class GameState with ChangeNotifier {
     _updateTarget();
   }
 
-  GameState._loaded(this.world, this.player, this.questIndex, this.questAccepted, this.chapterCelebrated)
-      : cameraOffset = player.position {
-    // The app may have closed before the chapter ending was shown.
-    showChapterComplete = chapterComplete && !chapterCelebrated;
+  GameState._loaded(
+    this.world,
+    this.mine,
+    this.underground,
+    this.player,
+    this.questIndex,
+    this.questAccepted,
+    this.chaptersCelebrated,
+  ) : cameraOffset = player.position {
+    // The app may have closed before a chapter ending was shown.
+    showChapterComplete = chaptersDone > chaptersCelebrated;
     _unstickPlayer();
     cameraOffset = player.position;
     _updateTarget();
   }
 
+  /// The map the player is on.
+  Level get level => underground ? mine! : world;
+
   // ---------------------------------------------------------------------------
   // Quests
 
-  Quest? get currentQuest => questIndex < Quest.chapter.length ? Quest.chapter[questIndex] : null;
+  Quest? get currentQuest => questIndex < Quest.all.length ? Quest.all[questIndex] : null;
 
-  bool get chapterComplete => currentQuest == null;
+  /// The chapter being played, or the last one once the story is done.
+  int get chapter => currentQuest?.chapter ?? Quest.chapterCount;
+
+  /// How many chapters have been played to the end.
+  int get chaptersDone {
+    final quest = currentQuest;
+    return quest == null ? Quest.chapterCount : quest.chapter - 1;
+  }
+
+  /// Whether every quest of every chapter is done.
+  bool get storyComplete => currentQuest == null;
+
+  /// The chapter whose ending is shown next.
+  int get celebratingChapter => min(chaptersCelebrated + 1, Quest.chapterCount);
 
   bool get questReady {
     final quest = currentQuest;
-    return questAccepted &&
-        quest != null &&
-        quest.requires.entries.every((e) => player.count(e.key) >= e.value);
+    if (!questAccepted || quest == null) return false;
+    final meet = quest.meet;
+    return quest.requires.entries.every((e) => player.count(e.key) >= e.value) &&
+        // Someone to find has to be back in the village.
+        (meet == null || world.npc(meet) != null);
   }
 
-  /// Where the quest arrow points: the elder, when there is something to
-  /// tell or hand in.
+  /// Whether the elder has a task to give, or one to take back.
+  bool get elderHasNews => currentQuest != null && (!questAccepted || questReady);
+
+  /// Where the quest arrow points: the elder when there is news for him (or
+  /// the ladder, from down in the mine), and the mine when the task is there.
   Offset? get questTargetPosition {
-    if (chapterComplete || (questAccepted && !questReady)) return null;
-    return world.npc(Npc.elderId)?.position;
+    final quest = currentQuest;
+    if (quest == null) return null;
+    if (elderHasNews) {
+      if (!underground) return world.npc(Npc.elderId)?.position;
+      final ladder = mine!.ladder;
+      return Offset(ladder.x.toDouble(), ladder.y.toDouble());
+    }
+    if (!underground && (quest.id == Quest.ore || quest.id == Quest.miner)) return world.mineEntrance;
+    return null;
   }
+
+  /// Whether the story has reached the quest [id].
+  bool _reached(String id) => questIndex >= Quest.all.indexWhere((q) => q.id == id);
 
   void acceptQuest() {
     questAccepted = true;
@@ -157,17 +221,23 @@ class GameState with ChangeNotifier {
     final quest = currentQuest;
     if (quest == null || !questReady) return;
 
-    quest.requires.forEach(player.removeItem);
+    if (!quest.keep) quest.requires.forEach(player.removeItem);
     _xp(quest.xp);
     _applyQuestReward(quest.id);
     _sound('quest');
     questIndex++;
-    // The elder hands out the next task straight away.
-    questAccepted = true;
 
+    // The elder hands out the next task of the chapter straight away. A new
+    // chapter begins after its ending has been celebrated.
     final next = currentQuest;
-    dialogReply = next == null ? quest.done : '${quest.done}\n\n${next.intro}';
-    _chapterJustCompleted = next == null;
+    if (next != null && next.chapter == quest.chapter) {
+      questAccepted = true;
+      dialogReply = '${quest.done}\n\n${next.intro}';
+    } else {
+      questAccepted = false;
+      dialogReply = quest.done;
+      _chapterJustCompleted = true;
+    }
     _saveRequested = true;
     notifyListeners();
   }
@@ -186,21 +256,35 @@ class GameState with ChangeNotifier {
         player.addItem('watering_can', 1);
         player.addItem('seeds', 5);
         break;
+      case Quest.light:
+        world.mineOpen = true;
+        break;
+      case Quest.forge:
+        world.buildForge();
+        _unstickPlayer();
+        break;
     }
   }
 
   // ---------------------------------------------------------------------------
   // Dialog
 
+  /// Who the open conversation is with.
+  Npc? get dialogNpc {
+    final id = dialogNpcId;
+    return id == null ? null : level.npc(id);
+  }
+
   /// What the villager in the open conversation says.
   String get dialogText {
     final id = dialogNpcId;
     if (id == null) return '';
     if (dialogReply != null) return dialogReply!;
+    if (id == Npc.bramId && underground) return Npc.bramFound;
     final quest = currentQuest;
     if (id != Npc.elderId || quest == null) return Npc.line(id, questIndex);
     if (!questAccepted) return quest.intro;
-    if (questReady) return 'You brought everything I asked for. Shall we get to work?';
+    if (questReady) return quest.ready;
     return quest.reminder;
   }
 
@@ -211,8 +295,10 @@ class GameState with ChangeNotifier {
   }
 
   void closeDialog() {
+    final id = dialogNpcId;
     dialogNpcId = null;
     dialogReply = null;
+    if (id == Npc.bramId && underground) _bramGoesHome();
     if (_chapterJustCompleted) {
       _chapterJustCompleted = false;
       showChapterComplete = true;
@@ -226,15 +312,29 @@ class GameState with ChangeNotifier {
 
   void closeChapterComplete() {
     showChapterComplete = false;
-    chapterCelebrated = true;
+    chaptersCelebrated = chaptersDone;
     _saveRequested = true;
     notifyListeners();
+  }
+
+  /// Bram, found at last, makes his own way back to the village.
+  void _bramGoesHome() {
+    final mine = this.mine!;
+    mine.npcs.removeWhere((n) => n.id == Npc.bramId);
+    mine.refreshSolid();
+    world.npcs.add(Npc.create(Npc.bramId, world.minerHome));
+    world.refreshSolid();
+    _sound('accept');
+    _showAction('Bram heads for the ladder. Tell Elder Rowan the good news!');
+    _saveRequested = true;
   }
 
   // ---------------------------------------------------------------------------
   // Game loop
 
   bool get isSleeping => sleepTimer > 0;
+
+  bool get isTravelling => travelTimer > 0;
 
   bool get isMenuOpen =>
       showInventory ||
@@ -244,7 +344,8 @@ class GameState with ChangeNotifier {
       dialogNpcId != null ||
       showChapterComplete ||
       confirmSleep ||
-      isSleeping;
+      isSleeping ||
+      isTravelling;
 
   bool get nearFire => _distanceToNearestFire() <= 3;
 
@@ -255,9 +356,15 @@ class GameState with ChangeNotifier {
       notifyListeners();
       return;
     }
+    if (isTravelling) {
+      _updateTravel(dt);
+      notifyListeners();
+      return;
+    }
     if (isMenuOpen) return;
 
     clock += dt;
+    // Time passes in the valley while the player is underground too.
     world.updateTime(dt);
 
     isMoving = moveInput != Offset.zero;
@@ -271,12 +378,14 @@ class GameState with ChangeNotifier {
       dt,
       moving: isMoving,
       nearFire: warm,
-      cold: !warm && world.getLightLevel() < 0.5,
+      cold: !warm && !underground && world.getLightLevel() < 0.5,
     );
     if (player.isDead) {
       _respawn();
     }
 
+    _updateLight(dt);
+    if (underground) mine!.explore(player.position, max(2.0, lightRadius));
     _updateEffects(dt);
     _updateTarget();
     _updateCamera(dt);
@@ -345,13 +454,14 @@ class GameState with ChangeNotifier {
   bool _canStandAt(Offset p) {
     // Check the corners of a slightly smaller-than-tile hitbox.
     const r = _hitbox;
+    final level = this.level;
     for (final c in [
       Offset(p.dx - r, p.dy - r),
       Offset(p.dx + r, p.dy - r),
       Offset(p.dx - r, p.dy + r),
       Offset(p.dx + r, p.dy + r),
     ]) {
-      if (!world.isWalkable(c.dx.floor(), c.dy.floor())) return false;
+      if (!level.isWalkable(c.dx.floor(), c.dy.floor())) return false;
     }
     return true;
   }
@@ -359,7 +469,7 @@ class GameState with ChangeNotifier {
   /// Moves the player out of anything that became solid around them.
   void _unstickPlayer() {
     if (!_canStandAt(player.position)) {
-      player.position = world.nearestReachableTile(player.position) + const Offset(0.5, 0.5);
+      player.position = level.nearestReachableTile(player.position) + const Offset(0.5, 0.5);
     }
   }
 
@@ -373,10 +483,112 @@ class GameState with ChangeNotifier {
     player.health = (player.maxHealth / 2).ceil();
     player.hunger = player.maxHunger / 2;
     player.energy = player.maxEnergy / 2;
+    if (underground) {
+      underground = false;
+      _hits.clear();
+    }
     player.position = world.playerSpawn + const Offset(0.5, 0.5);
     _unstickPlayer();
     _sound('deny');
     _showAction('You fainted and woke up in the village...');
+  }
+
+  // ---------------------------------------------------------------------------
+  // Light
+
+  bool get _isDark => underground || world.getLightLevel() < 0.6;
+
+  /// What the player holds up to see by in the dark: 'lantern', 'torch' or
+  /// null. Torches only burn in the dark, and a lantern makes them needless.
+  String? get heldLight {
+    if (!_isDark) return null;
+    if (player.count('lantern') > 0) return 'lantern';
+    return player.torchTime > 0 ? 'torch' : null;
+  }
+
+  bool get torchLit => heldLight == 'torch';
+
+  /// How far the player's light reaches, in tiles. A torch dims as it
+  /// burns down.
+  double get lightRadius => switch (heldLight) {
+        'lantern' => 5.5,
+        'torch' => 4.5 * (0.55 + 0.45 * min(1.0, player.torchTime / 20)),
+        _ => underground ? 1.4 : 2.2,
+      };
+
+  /// Whether the player has something to light the way with.
+  bool get hasLight => player.count('lantern') > 0 || player.torchTime > 0 || player.count('torch') > 0;
+
+  void _updateLight(double dt) {
+    if (!torchLit) return;
+    player.torchTime = max(0.0, player.torchTime - dt);
+    if (player.torchTime > 0) return;
+    _sound('fizzle');
+    if (!underground) {
+      _showAction('Your torch burned out.');
+    } else if (player.count('torch') > 0) {
+      _lightTorch();
+      _showAction('Your torch burned out, so you light a new one.');
+    } else {
+      _showAction('Your last torch burned out! Find your way back to the ladder.');
+    }
+  }
+
+  void _lightTorch() {
+    player.removeItem('torch', 1);
+    player.torchTime = torchSeconds;
+    _sound('torch');
+  }
+
+  // ---------------------------------------------------------------------------
+  // The mine
+
+  void _travel({required bool down}) {
+    travelTimer = _travelSeconds;
+    _travelDown = down;
+    _travelApplied = false;
+    _sound('climb');
+    _updateTarget();
+  }
+
+  void _updateTravel(double dt) {
+    travelTimer = max(0, travelTimer - dt);
+    // Change places while the screen is dark.
+    if (!_travelApplied && travelTimer <= _travelSeconds / 2) {
+      _travelApplied = true;
+      _travelDown ? _arriveInMine() : _arriveInValley();
+    }
+    if (!isTravelling) _updateTarget();
+  }
+
+  void _arriveInMine() {
+    final mine = this.mine ??= (Mine(seed: world.seed + 1)..generate());
+    underground = true;
+    _hits.clear();
+    player.position = Offset(mine.arrival.x + 0.5, mine.arrival.y + 0.5);
+    player.direction = 'down';
+    cameraOffset = player.position;
+    if (player.count('lantern') == 0 && player.torchTime == 0 && player.count('torch') > 0) {
+      _lightTorch();
+      _showAction('You light a torch and climb down into the old mine.');
+    } else {
+      _showAction('You climb down into the old mine.');
+    }
+    mine.explore(player.position, lightRadius);
+    _saveRequested = true;
+  }
+
+  void _arriveInValley() {
+    underground = false;
+    _hits.clear();
+    final entrance = world.mineEntrance;
+    player.position = entrance == null
+        ? world.playerSpawn + const Offset(0.5, 0.5)
+        : entrance + const Offset(0.5, 1.5);
+    player.direction = 'down';
+    _unstickPlayer();
+    cameraOffset = player.position;
+    _saveRequested = true;
   }
 
   // ---------------------------------------------------------------------------
@@ -394,8 +606,9 @@ class GameState with ChangeNotifier {
     Interaction? best;
     double bestDistance = reach;
 
-    void offer(Offset tile, Interaction Function() make) {
-      final d = (tile + const Offset(0.5, 0.5) - p).distance;
+    // A [bias] favours the way in or out over whatever else is close by.
+    void offer(Offset tile, Interaction Function() make, {double bias = 0}) {
+      final d = (tile + const Offset(0.5, 0.5) - p).distance - bias;
       if (d < bestDistance) {
         bestDistance = d;
         best = make();
@@ -404,36 +617,59 @@ class GameState with ChangeNotifier {
 
     Point<int> tileOf(Offset o) => Point(o.dx.toInt(), o.dy.toInt());
 
-    for (final npc in world.npcs) {
+    final level = this.level;
+    for (final npc in level.npcs) {
       offer(npc.position, () => Interaction('talk', 'Talk', tileOf(npc.position), key: npc.id));
     }
-    for (final e in world.trees.entries) {
-      offer(e.value, () => Interaction('chop', 'Chop', tileOf(e.value), key: e.key));
-    }
-    for (final e in world.rocks.entries) {
+    for (final e in level.rocks.entries) {
       offer(e.value, () => Interaction('mine', 'Mine', tileOf(e.value), key: e.key));
     }
-    for (final e in world.plants.entries) {
-      if (e.key.startsWith('berry_bush') && world.hasFruit(e.key)) {
-        offer(e.value, () => Interaction('pick', 'Pick', tileOf(e.value), key: e.key));
-      } else if (e.key.startsWith('grass_tall')) {
-        offer(e.value, () => Interaction('search', 'Search', tileOf(e.value), key: e.key));
-      }
-    }
-    for (final e in world.appleTrees.entries) {
-      if (world.hasFruit(e.key)) {
-        offer(e.value, () => Interaction('pick_apple', 'Pick', tileOf(e.value), key: e.key));
-      }
-    }
-    for (final fire in world.fires) {
+    for (final fire in level.fires) {
       offer(fire, () => Interaction('cook', 'Cook', tileOf(fire)));
     }
-    offer(world.bed, () => Interaction('sleep', 'Sleep', tileOf(world.bed)));
-    for (final cave in world.caveEntrances) {
-      offer(cave, () => Interaction('cave', 'Look', tileOf(cave)));
-    }
-    for (final e in world.animals.entries) {
-      offer(e.value, () => Interaction('watch', 'Watch', tileOf(e.value), key: e.key));
+
+    if (level is Mine) {
+      for (final e in level.webs.entries) {
+        offer(e.value, () => Interaction('cut', 'Cut', tileOf(e.value), key: e.key));
+      }
+      for (final e in level.rubble.entries) {
+        offer(e.value, () => Interaction('clear', 'Break', tileOf(e.value), key: e.key));
+      }
+      final ladder = level.ladder;
+      offer(Offset(ladder.x.toDouble(), ladder.y.toDouble()), () => Interaction('climb', 'Climb', ladder), bias: 0.3);
+    } else {
+      for (final e in world.trees.entries) {
+        offer(e.value, () => Interaction('chop', 'Chop', tileOf(e.value), key: e.key));
+      }
+      for (final e in world.plants.entries) {
+        if (e.key.startsWith('berry_bush') && world.hasFruit(e.key)) {
+          offer(e.value, () => Interaction('pick', 'Pick', tileOf(e.value), key: e.key));
+        } else if (e.key.startsWith('grass_tall')) {
+          offer(e.value, () => Interaction('search', 'Search', tileOf(e.value), key: e.key));
+        }
+      }
+      for (final e in world.appleTrees.entries) {
+        if (world.hasFruit(e.key)) {
+          offer(e.value, () => Interaction('pick_apple', 'Pick', tileOf(e.value), key: e.key));
+        }
+      }
+      offer(world.bed, () => Interaction('sleep', 'Sleep', tileOf(world.bed)));
+      for (final (i, cave) in world.caveEntrances.indexed) {
+        offer(cave, () {
+          if (i > 0) return Interaction('cave', 'Look', tileOf(cave));
+          return world.mineOpen
+              ? Interaction('enter', 'Enter', tileOf(cave))
+              : Interaction('mine_closed', 'Look', tileOf(cave));
+        }, bias: i == 0 ? 0.3 : 0);
+      }
+      for (final t in world.forgeTiles) {
+        offer(Offset(t.x.toDouble(), t.y.toDouble()), () {
+          return world.forgeBuilt ? Interaction('smelt', 'Smelt', t) : Interaction('forge_ruin', 'Look', t);
+        });
+      }
+      for (final e in world.animals.entries) {
+        offer(e.value, () => Interaction('watch', 'Watch', tileOf(e.value), key: e.key));
+      }
     }
 
     // Tiles around the player: farmland, water and the broken bridge.
@@ -442,12 +678,12 @@ class GameState with ChangeNotifier {
       for (int dx = -1; dx <= 1; dx++) {
         final x = here.x + dx;
         final y = here.y + dy;
-        final tile = world.getTileAt(x, y);
+        final tile = level.getTileAt(x, y);
         final spot = Offset(x.toDouble(), y.toDouble());
         if (tile == 'farmland') {
           offer(spot, () => _farmInteraction(x, y));
         } else if (tile == 'water') {
-          if (world.isBridgeSite(x, y)) {
+          if (!underground && world.isBridgeSite(x, y)) {
             offer(spot, () => Interaction('bridge_site', 'Look', Point(x, y)));
           } else {
             offer(spot, () => Interaction('fish', 'Fish', Point(x, y)));
@@ -483,10 +719,19 @@ class GameState with ChangeNotifier {
         _openDialog(t.key!);
         break;
       case 'chop':
-        _gather(t, world.trees, 'wood', 3);
+        final tree = world.trees[t.key!]!;
+        final pine = world.isPine(tree.dx.toInt(), tree.dy.toInt());
+        _gather(t, world.trees, {'wood': 3, if (pine) 'resin': 1}, hits: _has('iron_axe') ? 2 : 3, sound: 'chop');
         break;
       case 'mine':
-        _gather(t, world.rocks, 'stone', 2);
+        final key = t.key!;
+        final items = key.startsWith('iron')
+            ? {'iron_ore': 1}
+            : key.startsWith('crystal')
+                ? {'crystal': 1}
+                : {'stone': 2};
+        final broke = _gather(t, level.rocks, items, hits: _has('iron_pickaxe') ? 2 : 3, sound: 'mine');
+        if (broke && key.startsWith('crystal')) _sound('chime');
         break;
       case 'pick':
         _sound('pick');
@@ -549,7 +794,39 @@ class GameState with ChangeNotifier {
         _sound('open');
         break;
       case 'cave':
-        _showAction('A cold draft blows out of the dark cave. Better not go in without a light.');
+        _showAction('A shallow cave. A cold draft blows out of the dark.');
+        _sound('open');
+        break;
+      case 'mine_closed':
+        _showAction(_reached(Quest.light)
+            ? 'The old mine is boarded up. Elder Rowan has the key.'
+            : 'An old mine, boarded up since the storm. A cold draft blows through the planks.');
+        _sound('open');
+        break;
+      case 'enter':
+        if (hasLight) {
+          _travel(down: true);
+        } else {
+          _showAction("It's pitch dark down there. Bring a torch.");
+          _sound('deny');
+        }
+        break;
+      case 'climb':
+        _travel(down: false);
+        break;
+      case 'cut':
+        _cutWeb(t);
+        break;
+      case 'clear':
+        _breakRubble(t);
+        break;
+      case 'smelt':
+        _smelt(t);
+        break;
+      case 'forge_ruin':
+        _showAction(_reached(Quest.forge)
+            ? 'The old forge, cold and crumbling. Elder Rowan wants it rebuilt.'
+            : 'An old forge, cold and crumbling.');
         _sound('open');
         break;
       case 'watch':
@@ -561,22 +838,83 @@ class GameState with ChangeNotifier {
     notifyListeners();
   }
 
-  /// Chopping and mining take three hits; the last one yields [amount].
-  void _gather(Interaction t, Map<String, Offset> source, String item, int amount) {
-    if (!_useEnergy(1.5)) return;
-    _sound(item == 'wood' ? 'chop' : 'mine');
+  bool _has(String item) => player.count(item) > 0;
+
+  /// Chopping and mining take a few [hits]; the last one yields [items].
+  /// Returns whether the thing came down.
+  bool _gather(
+    Interaction t,
+    Map<String, Offset> source,
+    Map<String, int> items, {
+    required int hits,
+    required String sound,
+  }) {
+    if (!_useEnergy(1.5)) return false;
+    _sound(sound);
     final key = t.key!;
     shakeKey = key;
     shakeTime = 0.25;
-    final hits = (_hits[key] ?? 0) + 1;
-    if (hits < 3) {
-      _hits[key] = hits;
-      return;
+    final count = (_hits[key] ?? 0) + 1;
+    if (count < hits) {
+      _hits[key] = count;
+      return false;
     }
     _hits.remove(key);
     source.remove(key);
-    _gain(item, amount, t.tile);
+    var below = false;
+    for (final e in items.entries) {
+      _gain(e.key, e.value, t.tile, below: below);
+      below = true;
+    }
     _xp(5);
+    return true;
+  }
+
+  void _cutWeb(Interaction t) {
+    if (!_has('wooden_sword')) {
+      _showAction('A thick cobweb blocks the shaft. A sword would cut right through it.');
+      _sound('deny');
+      return;
+    }
+    final mine = this.mine!;
+    mine.webs.remove(t.key);
+    mine.refreshSolid();
+    _sound('swish');
+    _float('Cut!', t.tile, Colors.white);
+    _xp(5);
+    _saveRequested = true;
+  }
+
+  void _breakRubble(Interaction t) {
+    if (!_has('iron_pickaxe')) {
+      _showAction('Fallen rocks block the shaft. Only an iron pickaxe could break through.');
+      _sound('deny');
+      return;
+    }
+    final mine = this.mine!;
+    if (_gather(t, mine.rubble, {'stone': 3}, hits: 3, sound: 'mine')) {
+      mine.refreshSolid();
+      _sound('crumble');
+      _saveRequested = true;
+    }
+  }
+
+  void _smelt(Interaction t) {
+    if (!_has('iron_ore')) {
+      _showAction('Bring iron ore from the mine to smelt it here.');
+      _sound('deny');
+      return;
+    }
+    if (!_has('wood')) {
+      _showAction('The forge burns one piece of wood for each ingot.');
+      _sound('deny');
+      return;
+    }
+    player.removeItem('iron_ore', 1);
+    player.removeItem('wood', 1);
+    _sound('smelt');
+    _gain('iron_ingot', 1, t.tile);
+    _xp(4);
   }
 
   void _fish(Interaction t) {
@@ -658,14 +996,14 @@ class GameState with ChangeNotifier {
 
   double _distanceToNearestFire() {
     var best = double.infinity;
-    for (final fire in world.fires) {
+    for (final fire in level.fires) {
       best = min(best, (fire + const Offset(0.5, 0.5) - player.position).distance);
     }
     return best;
   }
 
   bool get canSleepHere =>
-      (world.bed + const Offset(0.5, 0.5) - player.position).distance <= 1.6 ||
+      (!underground && (world.bed + const Offset(0.5, 0.5) - player.position).distance <= 1.6) ||
       _distanceToNearestFire() <= 2.5;
 
   void requestSleep() {
@@ -718,7 +1056,8 @@ class GameState with ChangeNotifier {
   // ---------------------------------------------------------------------------
   // Inventory and crafting
 
-  /// Eats food, places a campfire, or explains what the item is for.
+  /// Eats food, places a campfire, lights a torch, or explains what the item
+  /// is for.
   void useItem(String id) {
     final info = Items.of(id);
     if (player.count(id) == 0) return;
@@ -728,6 +1067,20 @@ class GameState with ChangeNotifier {
       _sound('eat');
     } else if (id == 'campfire') {
       _placeCampfire();
+    } else if (id == 'torch') {
+      if (_has('lantern')) {
+        inventoryNote = 'Your lantern already lights the way.';
+        _sound('open');
+      } else if (player.torchTime > 0) {
+        inventoryNote = 'You already have a torch lit.';
+        _sound('open');
+      } else if (!_isDark) {
+        inventoryNote = "It's bright enough out here. A torch only burns in the dark.";
+        _sound('deny');
+      } else {
+        _lightTorch();
+        inventoryNote = 'You light a torch.';
+      }
     } else {
       inventoryNote = '${info.name}: ${info.description}';
       _sound('open');
@@ -738,13 +1091,13 @@ class GameState with ChangeNotifier {
   void _placeCampfire() {
     showInventory = false;
     final tile = _facingTile();
-    if (!world.canPlaceCampfire(tile.x, tile.y, from: _playerTile) || _hitboxOverlaps(tile)) {
+    if (!level.canPlaceCampfire(tile.x, tile.y, from: _playerTile) || _hitboxOverlaps(tile)) {
       _showAction("You can't place a campfire there. Face an open spot that isn't in anyone's way.");
       _sound('deny');
       return;
     }
     player.removeItem('campfire', 1);
-    world.placeCampfire(tile.x, tile.y);
+    level.placeCampfire(tile.x, tile.y);
     _sound('place');
     _showAction('Campfire placed. Cook fish and sleep beside it.');
     _updateTarget();
@@ -772,13 +1125,21 @@ class GameState with ChangeNotifier {
         p.dy - _hitbox < tile.y + 1;
   }
 
-  bool canCraft(String id) => recipes[id]!.entries.every((e) => player.count(e.key) >= e.value);
+  /// Whether the story has shown the player how to make [id] yet.
+  bool recipeUnlocked(String id) => switch (id) {
+        'torch' => _reached(Quest.light),
+        'iron_axe' || 'iron_pickaxe' || 'lantern' => world.forgeBuilt,
+        _ => true,
+      };
+
+  bool canCraft(String id) =>
+      recipeUnlocked(id) && recipes[id]!.entries.every((e) => player.count(e.key) >= e.value);
 
   void craftItem(String id) {
     final recipe = recipes[id];
     if (recipe == null || !canCraft(id)) return;
     recipe.forEach(player.removeItem);
-    player.addItem(id, 1);
+    player.addItem(id, craftYield[id] ?? 1);
     _sound('craft');
     _xp(_craftXp[id] ?? 0);
     notifyListeners();
@@ -787,8 +1148,11 @@ class GameState with ChangeNotifier {
   // ---------------------------------------------------------------------------
   // Menus
 
+  // No menus while the screen fades for sleep or for the climb.
+  bool get _busy => isSleeping || isTravelling;
+
   void toggleInventory() {
-    if (isSleeping) return;
+    if (_busy) return;
     showInventory = !showInventory;
     _sound(showInventory ? 'open' : 'close');
     showCrafting = false;
@@ -799,7 +1163,7 @@ class GameState with ChangeNotifier {
   }
 
   void toggleCrafting() {
-    if (isSleeping) return;
+    if (_busy) return;
     showCrafting = !showCrafting;
     _sound(showCrafting ? 'open' : 'close');
     showInventory = false;
@@ -809,7 +1173,7 @@ class GameState with ChangeNotifier {
   }
 
   void toggleMap() {
-    if (isSleeping) return;
+    if (_busy) return;
     showMap = !showMap;
     _sound(showMap ? 'open' : 'close');
     showInventory = false;
@@ -819,7 +1183,7 @@ class GameState with ChangeNotifier {
   }
 
   void togglePause() {
-    if (isSleeping) return;
+    if (_busy) return;
     isPaused = !isPaused;
     _sound(isPaused ? 'open' : 'close');
     _updateTarget();
@@ -877,21 +1241,41 @@ class GameState with ChangeNotifier {
   Map<String, dynamic> toJson() => {
         'version': saveVersion,
         'world': world.toJson(),
+        if (mine case final mine?) 'mine': mine.toJson(),
+        'underground': underground,
         'player': player.toJson(),
-        'quest': {'index': questIndex, 'accepted': questAccepted, 'celebrated': chapterCelebrated},
+        'quest': {'index': questIndex, 'accepted': questAccepted, 'celebrated': chaptersCelebrated},
       };
 
+  /// Loads a save, including those from before chapter 2 (version 1).
   factory GameState.fromJson(Map<String, dynamic> json) {
-    if (json['version'] != saveVersion) {
-      throw FormatException('Unsupported save version ${json['version']}');
+    final version = json['version'];
+    if (version != 1 && version != saveVersion) {
+      throw FormatException('Unsupported save version $version');
     }
     final quest = json['quest'] as Map<String, dynamic>;
+    final index = quest['index'] as int;
+    // Version 1 saved whether the one chapter ending had been seen.
+    final celebrated = quest['celebrated'];
+    final chaptersCelebrated = celebrated is int ? celebrated : (celebrated == true ? 1 : 0);
+    // A version 1 save past the end of chapter 1 waits for chapter 2 to be
+    // offered.
+    final accepted = (quest['accepted'] as bool) && !(version == 1 && index >= Quest.ofChapter(1).length);
+    final mineJson = json['mine'] as Map<String, dynamic>?;
+    final mine = mineJson == null ? null : Mine.fromJson(mineJson);
+    final world = World.fromJson(json['world'] as Map<String, dynamic>);
+    final player = Player.fromJson(json['player'] as Map<String, dynamic>);
+    // Campfires that stand where the forge and Bram belong go back in the bag.
+    final returned = world.clearStoryGround();
+    if (returned > 0) player.addItem('campfire', returned);
     return GameState._loaded(
-      World.fromJson(json['world'] as Map<String, dynamic>),
-      Player.fromJson(json['player'] as Map<String, dynamic>),
-      quest['index'] as int,
-      quest['accepted'] as bool,
-      quest['celebrated'] as bool? ?? false,
+      world,
+      mine,
+      mine != null && (json['underground'] as bool? ?? false),
+      player,
+      index,
+      accepted,
+      chaptersCelebrated,
     );
   }
 }

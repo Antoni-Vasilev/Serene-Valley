@@ -34,7 +34,17 @@ class Textures {
   late final List<ui.Image> flowers, tallGrass, crops, fire;
   late final ui.Image cave, coldFirePit, bed, bracket, shadowSmall, shadowMedium, shadowLarge;
   late final ui.Image wall, window, litWindow, door, openDoor;
+  late final ui.Image mineEntrance, boardedMineEntrance, forgeRuin;
+  late final List<ui.Image> forge; // [frame]
+  late final List<ui.Image> heldTorch; // [frame]
+  late final ui.Image heldLantern;
   final Map<(int, int), ui.Image> _roofs = {};
+
+  // The old mine.
+  late final List<ui.Image> caveFloor, caveTop, caveFace, mineRocks, oreRocks, crystals, mushrooms;
+  late final List<ui.Image> caveRim; // [side], where a wall's top meets the floor
+  late final ui.Image caveFaceLeft, caveFaceRight, caveShadow, rails;
+  late final ui.Image cobweb, rubble, timberFrame, mineCart, ladder;
 
   // Animals facing [right, left].
   late final List<ui.Image> rabbit, deer, bird;
@@ -44,6 +54,7 @@ class Textures {
   Textures._() {
     _buildTerrain();
     _buildObjects();
+    _buildMine();
     rabbit = _bothWays(CharacterArt.rabbit());
     deer = _bothWays(CharacterArt.deer());
     bird = _bothWays(CharacterArt.bird());
@@ -152,6 +163,36 @@ class Textures {
     litWindow = ObjectArt.facadeWindow(Random(2801), lit: true).toImage();
     door = ObjectArt.facadeDoor(Random(2802), open: false).toImage();
     openDoor = ObjectArt.facadeDoor(Random(2802), open: true).toImage();
+    mineEntrance = ObjectArt.mineEntrance(open: true).toImage();
+    boardedMineEntrance = ObjectArt.mineEntrance(open: false).toImage();
+    forgeRuin = ObjectArt.forge(built: false).toImage();
+    forge = [for (var f = 0; f < 3; f++) ObjectArt.forge(built: true, frame: f).toImage()];
+    heldTorch = [for (var f = 0; f < 3; f++) ObjectArt.heldTorch(f).toImage()];
+    heldLantern = ObjectArt.heldLantern().toImage();
+  }
+
+  void _buildMine() {
+    List<ui.Image> make(PixelCanvas Function(Random r) art, int seed) => [
+          for (var v = 0; v < variants; v++) art(Random(seed * 101 + v)).toImage(),
+        ];
+
+    caveFloor = make(TerrainArt.caveFloor, 30);
+    caveTop = make(TerrainArt.caveTop, 31);
+    caveFace = make(TerrainArt.caveFace, 32);
+    caveRim = [for (var side = 0; side < 4; side++) _turn(TerrainArt.caveRim(), side).toImage()];
+    caveFaceLeft = TerrainArt.caveFaceSide(left: true).toImage();
+    caveFaceRight = TerrainArt.caveFaceSide(left: false).toImage();
+    caveShadow = TerrainArt.caveShadow().toImage();
+    rails = TerrainArt.rails().toImage();
+    mineRocks = make((r) => ObjectArt.rock(r, mossy: false), 33);
+    oreRocks = make((r) => ObjectArt.rock(r, mossy: false, ore: Palette.rust), 34);
+    crystals = make(ObjectArt.crystals, 35);
+    mushrooms = make(ObjectArt.mushrooms, 36);
+    cobweb = ObjectArt.cobweb().toImage();
+    rubble = ObjectArt.rubble(Random(3700)).toImage();
+    timberFrame = ObjectArt.timberFrame().toImage();
+    mineCart = ObjectArt.mineCart(Random(3800)).toImage();
+    ladder = ObjectArt.ladder().toImage();
   }
 
   static List<ui.Image> _bothWays(PixelCanvas facingRight) => [facingRight.toImage(), facingRight.mirrored().toImage()];

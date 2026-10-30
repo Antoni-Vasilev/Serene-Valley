@@ -97,8 +97,9 @@ class ObjectArt {
     return c;
   }
 
-  /// A boulder, 16x14 pixels.
-  static PixelCanvas rock(Random r) {
+  /// A boulder, 16x14 pixels. Out in the valley some are mossy; [ore]
+  /// streaks it with seams of metal.
+  static PixelCanvas rock(Random r, {bool mossy = true, List<int>? ore}) {
     final c = PixelCanvas(16, 14);
     const ramp = Palette.rock;
     c.shadedEllipse(8.5, 8, 6.2, 4.8, ramp, light: 0.05);
@@ -107,14 +108,315 @@ class ObjectArt {
     final crack = 7 + r.nextInt(3);
     c.line(crack, 5, crack + 1, 8, ramp[0]);
     c.set(crack + 2, 9, ramp[0]);
-    if (r.nextDouble() < 0.4) {
+    if (r.nextDouble() < 0.4 && mossy) {
       for (var i = 0; i < 5; i++) {
         c.tint(4 + r.nextInt(9), 4 + r.nextInt(3), Palette.grass[2 + r.nextInt(2)]);
+      }
+    }
+    if (ore != null) {
+      for (var i = 0; i < 5; i++) {
+        final x = 3 + r.nextInt(10);
+        final y = 5 + r.nextInt(6);
+        c.tint(x, y, ore[2]);
+        c.tint(x + 1, y, ore[1]);
+        c.tint(x + 1, y + 1, ore[0]);
+        c.tint(x - 1, y - 1, ore[3]);
       }
     }
     c.outline(Palette.rockOutline);
     return c;
   }
+
+  /// A cluster of glowing crystals on a rocky base, 16x16 pixels.
+  static PixelCanvas crystals(Random r) {
+    final c = PixelCanvas(16, 16);
+    c.shadedEllipse(8, 13, 5.5, 2.3, Palette.rock);
+    const ramp = Palette.crystal;
+    // Shards from the back to the front: base, tip, half width and lean.
+    for (final (base, tip, halfWidth, lean) in [
+      (5.0, 5 + r.nextInt(2), 1.6, -1.0),
+      (11.0, 4 + r.nextInt(2), 1.6, 1.0),
+      (8.0, 1 + r.nextInt(2), 2.2, 0.0),
+    ]) {
+      const bottom = 13;
+      for (var y = tip; y <= bottom; y++) {
+        final t = (y - tip) / (bottom - tip);
+        final w = halfWidth * min(1.0, t * 3 + 0.15);
+        final cx = base + lean * (1 - t) * 2;
+        for (var x = (cx - w).floor(); x <= (cx + w).ceil(); x++) {
+          final d = (x + 0.5 - cx) / max(w, 0.5);
+          if (d.abs() > 1) continue;
+          // Lit on the left face, dark on the right.
+          c.set(x, y, d < -0.2 ? ramp[3] : (d < 0.35 ? ramp[2] : ramp[1]));
+        }
+      }
+      c.set((base + lean * 1.6 - 0.5).round(), tip + 2, ramp[4]);
+    }
+    c.outline(0xFF1A1030);
+    return c;
+  }
+
+  /// A thick cobweb strung across a tunnel.
+  static PixelCanvas cobweb() {
+    final c = PixelCanvas(16, 16);
+    const thread = 0xF0E8E8F0;
+    const faint = 0xB0D0D0DC;
+    // Spokes from the middle out to the walls.
+    for (final (x, y) in const [(0, 0), (7, 0), (15, 1), (15, 8), (15, 15), (8, 15), (0, 14), (0, 7)]) {
+      c.line(8, 8, x, y, faint);
+    }
+    // Rings that sag a little under their own weight.
+    for (final radius in const [1.8, 3.4, 5.0, 6.6]) {
+      (int, int)? last;
+      for (var i = 0; i <= 8; i++) {
+        final a = i * pi / 4 + pi / 8;
+        final x = (8 + cos(a) * radius).round();
+        final y = (8 + sin(a) * radius * 0.9 + (sin(a) > 0 ? 0.6 : 0)).round();
+        if (last != null) c.line(last.$1, last.$2, x, y, thread);
+        last = (x, y);
+      }
+    }
+    c.set(8, 8, 0xF0F0F0F6);
+    return c;
+  }
+
+  /// Rocks and a snapped beam where a tunnel caved in.
+  static PixelCanvas rubble(Random r) {
+    final c = PixelCanvas(16, 16);
+    for (final (x, y, rx, ry) in const [
+      (3.5, 7.5, 2.6, 2.4),
+      (12.5, 6.5, 2.5, 2.2),
+      (8.0, 8.0, 4.0, 3.4),
+      (5.0, 11.5, 4.2, 3.4),
+      (11.0, 12.0, 4.0, 3.2),
+    ]) {
+      c.shadedEllipse(x + r.nextDouble() - 0.5, y, rx, ry, Palette.rock);
+    }
+    for (var i = 0; i < 5; i++) {
+      final x = 3 + r.nextInt(10);
+      final y = 6 + r.nextInt(7);
+      c.tint(x, y, Palette.rock[0]);
+      c.tint(x + 1, y + 1, Palette.rock[0]);
+    }
+    // The end of the beam pokes out of the pile.
+    const wood = Palette.wood;
+    c.line(1, 3, 6, 6, wood[1]);
+    c.line(1, 2, 6, 5, wood[3]);
+    c.line(2, 4, 6, 7, wood[0]);
+    c.set(1, 3, wood[4]);
+    c.outline(Palette.rockOutline);
+    return c;
+  }
+
+  /// A few glowing cave mushrooms.
+  static PixelCanvas mushrooms(Random r) {
+    final c = PixelCanvas(16, 16);
+    const cap = Palette.glowcap;
+    final count = 2 + r.nextInt(2);
+    for (var i = 0; i < count; i++) {
+      final x = 3 + r.nextInt(10);
+      final y = 6 + r.nextInt(6);
+      final half = i == 0 ? 2 : 1;
+      c.rect(x, y, 1, half + 2, 0xFFD8D0C0);
+      c.rect(x - half, y - 1, half * 2 + 1, 1, cap[2]);
+      c.rect(x - half + 1, y - 2, max(1, half * 2 - 1), 1, cap[3]);
+      c.set(x - half, y - 1, cap[1]);
+      c.set(x + half, y - 1, cap[1]);
+    }
+    c.outline(0xA0102428);
+    return c;
+  }
+
+  /// Timber posts and a beam propping up the roof of a narrow tunnel,
+  /// 16x24 pixels.
+  static PixelCanvas timberFrame() {
+    final c = PixelCanvas(16, 24);
+    const wood = Palette.wood;
+    for (final x in const [0, 13]) {
+      c.rect(x, 4, 3, 20, wood[1]);
+      c.rect(x, 4, 1, 20, wood[3]);
+      c.rect(x + 2, 4, 1, 20, wood[0]);
+    }
+    c.rect(0, 1, 16, 4, wood[2]);
+    c.rect(0, 1, 16, 1, wood[4]);
+    c.rect(0, 4, 16, 1, wood[0]);
+    c.set(1, 3, 0xFF2A2A2A);
+    c.set(14, 3, 0xFF2A2A2A);
+    c.outline(Palette.outline);
+    return c;
+  }
+
+  /// An old mine cart with some ore still in it, 16x14 pixels.
+  static PixelCanvas mineCart(Random r) {
+    final c = PixelCanvas(16, 14);
+    const steel = Palette.steel;
+    const wood = Palette.wood;
+    c.shadedEllipse(8, 5, 5.5, 2.6, Palette.rock);
+    for (var i = 0; i < 4; i++) {
+      c.tint(4 + r.nextInt(8), 3 + r.nextInt(3), Palette.rust[2]);
+    }
+    c.rect(1, 5, 14, 6, wood[1]);
+    c.rect(1, 7, 14, 1, wood[0]);
+    c.rect(1, 5, 14, 1, steel[3]);
+    c.rect(1, 10, 14, 1, steel[1]);
+    c.rect(1, 5, 1, 6, steel[2]);
+    c.rect(14, 5, 1, 6, steel[1]);
+    for (final x in const [4.0, 12.0]) {
+      c.shadedEllipse(x, 11.5, 1.8, 1.8, steel);
+    }
+    c.outline(Palette.outline);
+    return c;
+  }
+
+  /// A ladder up a shaft into daylight, standing against a rock face,
+  /// 16x28 pixels.
+  static PixelCanvas ladder() {
+    final c = PixelCanvas(16, 28);
+    c.ellipse(8, 6, 7, 5.5, 0xFF0E0C0E);
+    c.ellipse(8, 5.5, 5.5, 4.2, 0xFF7E98AC);
+    c.ellipse(8, 5, 4, 3, 0xFFB8D0DE);
+    c.ellipse(7.5, 4.5, 2, 1.5, 0xFFE6F2F8);
+    const wood = Palette.wood;
+    for (final x in const [3, 11]) {
+      c.rect(x, 2, 2, 26, wood[2]);
+      c.rect(x, 2, 1, 26, wood[3]);
+    }
+    for (var y = 5; y < 28; y += 4) {
+      c.rect(5, y, 6, 1, wood[1]);
+      c.rect(5, y + 1, 6, 1, wood[0]);
+    }
+    return c;
+  }
+
+  /// The way into the old mine: a cave mouth framed in timber, boarded up
+  /// until the elder hands over the key.
+  static PixelCanvas mineEntrance({required bool open}) {
+    final c = cave();
+    const wood = Palette.wood;
+    for (final x in const [1, 12]) {
+      c.rect(x, 5, 3, 11, wood[1]);
+      c.rect(x, 5, 1, 11, wood[3]);
+      c.rect(x + 2, 5, 1, 11, wood[0]);
+    }
+    c.rect(0, 3, 16, 3, wood[2]);
+    c.rect(0, 3, 16, 1, wood[4]);
+    c.rect(0, 5, 16, 1, wood[0]);
+    if (!open) {
+      for (final y in const [7, 10, 13]) {
+        c.rect(3, y, 10, 2, wood[2]);
+        c.rect(3, y, 10, 1, wood[3]);
+        c.set(4, y, 0xFF3A3A3A);
+        c.set(11, y, 0xFF3A3A3A);
+      }
+    }
+    return c;
+  }
+
+  /// The village forge, two tiles wide: a stone furnace with a chimney and
+  /// an anvil on a stump. In ruins until it is rebuilt; once [built], its
+  /// fire glows and flickers through [frame] 0-2.
+  static PixelCanvas forge({required bool built, int frame = 0}) {
+    const w = 32, h = 34;
+    final c = PixelCanvas(w, h);
+    const stone = Palette.stone;
+    const wood = Palette.wood;
+    const steel = Palette.steel;
+    final r = Random(4100);
+    final top = built ? 13 : 21;
+
+    if (built) {
+      c.rect(12, 1, 6, 13, stone[2]);
+      c.rect(12, 1, 1, 13, stone[3]);
+      c.rect(17, 1, 1, 13, stone[0]);
+      for (var y = 4; y < 13; y += 3) {
+        c.rect(12, y, 6, 1, stone[1]);
+      }
+      c.rect(11, 0, 8, 2, stone[3]);
+      c.rect(13, 0, 4, 1, 0xFF1A1A1A);
+    } else {
+      // The stub of the fallen chimney.
+      c.rect(12, 15, 6, 7, stone[2]);
+      c.rect(12, 15, 1, 7, stone[3]);
+      for (final (x, y) in const [(12, 14), (13, 13), (15, 14), (17, 14)]) {
+        c.set(x, y, stone[2]);
+      }
+    }
+    // The furnace, built of blocks, with a rounded top.
+    for (var y = top; y < h; y++) {
+      for (var x = 1; x < 20; x++) {
+        final row = (y - top) ~/ 4;
+        final mortar = (y - top) % 4 == 3 || (x + (row.isOdd ? 2 : 0)) % 5 == 0;
+        c.set(x, y, mortar ? stone[1] : (x < 4 ? stone[3] : stone[2]));
+      }
+    }
+    c.shadedEllipse(10.5, top + 1.0, 9.5, 3.5, stone.sublist(1));
+    // The mouth of the furnace.
+    for (var y = 23; y < h - 1; y++) {
+      for (var x = 6; x < 15; x++) {
+        final dx = (x + 0.5 - 10.5) / 4.5;
+        final dy = (y + 0.5 - 27) / 4;
+        if (y < 27 && dx * dx + dy * dy > 1) continue;
+        if (!built) {
+          c.set(x, y, 0xFF141012);
+          continue;
+        }
+        final heat = (y - 23) / 10 + (1 - dx.abs()) * 0.5 + r.nextDouble() * 0.25 + (frame == 1 ? 0.1 : 0);
+        c.set(x, y, Palette.fire[(heat * 3).floor().clamp(0, Palette.fire.length - 1)]);
+      }
+    }
+    // The stump, and the anvil on it or knocked off beside it.
+    c.rect(23, 27, 7, 7, wood[1]);
+    c.rect(23, 27, 7, 1, wood[3]);
+    c.rect(29, 27, 1, 7, wood[0]);
+    if (built) {
+      c.rect(22, 22, 9, 3, steel[2]);
+      c.rect(22, 22, 9, 1, steel[4]);
+      c.rect(20, 22, 2, 2, steel[2]);
+      c.rect(24, 25, 5, 2, steel[1]);
+    } else {
+      c.rect(21, 30, 4, 4, steel[1]);
+      c.rect(21, 30, 4, 1, Palette.rust[1]);
+      // Fallen stones.
+      for (final (x, y) in const [(2.5, 19.5), (19.5, 31.0), (7.5, 18.5)]) {
+        c.shadedEllipse(x, y, 2.2, 1.8, Palette.rock);
+      }
+    }
+    c.outline(Palette.outline);
+    return c;
+  }
+
+  /// A torch held up in the hand. The flame flickers through [frame] 0-2.
+  static PixelCanvas heldTorch(int frame) {
+    const flames = [
+      ['..r...', '..nr..', '.rnyr.', '.nyYn.', '.nyyn.'],
+      ['...r..', '..rn..', '.rnyr.', '.nYyn.', '.nyyn.'],
+      ['..r...', '.rn...', '.nyr..', 'rnYyn.', '.nyyn.'],
+    ];
+    return spriteFromRows(
+      [...flames[frame], '.wwww.', '.WWWW.', '..bd..', '..bd..', '..bd..', '..bd..', '..bd..'],
+      {
+        'Y': Palette.fire[4],
+        'y': Palette.fire[3],
+        'n': Palette.fire[2],
+        'r': Palette.fire[1],
+        'w': 0xFF8E7656,
+        'W': 0xFF5E4A36,
+        'b': Palette.wood[3],
+        'd': Palette.wood[1],
+      },
+    );
+  }
+
+  /// A crystal lantern held by its handle.
+  static PixelCanvas heldLantern() => spriteFromRows(
+        const ['..ooo..', '.o...o.', '.ooooo.', 'oxqqqxo', 'oxqPqxo', 'oxqqqxo', 'oxPqPxo', '.ooooo.', '..xxx..'],
+        {
+          'o': Palette.outline,
+          'x': Palette.steel[1],
+          'q': Palette.crystal[4],
+          'P': Palette.crystal[3],
+        },
+      );
 
   /// A berry bush, 16x14 pixels, with or without berries.
   static PixelCanvas bush(Random r, {required bool berries}) {

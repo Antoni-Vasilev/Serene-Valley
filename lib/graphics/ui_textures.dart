@@ -110,6 +110,14 @@ class UiTextures {
         'fishing_rod' => 'rod',
         'watering_can' => 'can',
         'wooden_sword' => 'sword',
+        'resin' => 'resin',
+        'torch' => 'torch',
+        'lantern' => 'lantern',
+        'iron_ore' => 'iron_ore',
+        'iron_ingot' => 'ingot',
+        'crystal' => 'crystal',
+        'iron_axe' => 'iron_axe',
+        'iron_pickaxe' => 'iron_pickaxe',
         _ => 'bag',
       };
 
@@ -128,7 +136,12 @@ class UiTextures {
         'water' => 'can',
         'growing' => 'hourglass',
         'harvest' => 'carrot',
-        'bridge_site' || 'cave' => 'look',
+        'bridge_site' || 'cave' || 'mine_closed' || 'forge_ruin' => 'look',
+        'enter' => 'enter',
+        'climb' => 'ladder',
+        'cut' => 'sword',
+        'clear' => 'iron_pickaxe',
+        'smelt' => 'ingot',
         'watch' => 'rabbit',
         _ => 'hand',
       };

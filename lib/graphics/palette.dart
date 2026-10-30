@@ -26,4 +26,12 @@ class Palette {
   static const carrot = [0xFFB5520E, 0xFFEF7D1A, 0xFFFFB24D];
   static const outline = 0xFF2A1E18;
   static const shadow = 0x40000000;
+
+  // The old mine.
+  static const caveFloor = [0xFF3A322C, 0xFF4A4038, 0xFF5A4F45, 0xFF6C5F53, 0xFF827364];
+  static const caveRock = [0xFF131215, 0xFF201E22, 0xFF302C30, 0xFF433D42, 0xFF5A5258];
+  static const rust = [0xFF7A3216, 0xFFA8501F, 0xFFD07A3A, 0xFFEFA466];
+  static const crystal = [0xFF34206A, 0xFF5434A4, 0xFF8460DC, 0xFFB394FF, 0xFFE6DAFF];
+  static const glowcap = [0xFF1F5C66, 0xFF2E8C96, 0xFF4FC6C8, 0xFFA8F4EC];
+  static const steel = [0xFF3A4452, 0xFF566476, 0xFF7A8A9E, 0xFFA6B6C8, 0xFFD2DEEA];
 }

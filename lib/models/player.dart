@@ -16,6 +16,8 @@ class Player {
 
   // Inventory
   Map<String, int> inventory;
+  // Seconds left on the torch in hand; 0 when none is lit.
+  double torchTime;
 
   // Stats
   int level;
@@ -42,6 +44,7 @@ class Player {
     this.level = 1,
     this.experience = 0,
     this.experienceToNextLevel = 100,
+    this.torchTime = 0,
   }) : inventory = inventory ??
             {
               'axe': 1,
@@ -161,6 +164,7 @@ class Player {
         'level': level,
         'experience': experience,
         'experienceToNextLevel': experienceToNextLevel,
+        'torch': torchTime,
       };
 
   factory Player.fromJson(Map<String, dynamic> json) => Player(
@@ -178,6 +182,7 @@ class Player {
         level: json['level'] as int,
         experience: json['experience'] as int,
         experienceToNextLevel: json['experienceToNextLevel'] as int,
+        torchTime: (json['torch'] as num?)?.toDouble() ?? 0,
       );
 
   Player copy() {
@@ -195,6 +200,7 @@ class Player {
       level: level,
       experience: experience,
       experienceToNextLevel: experienceToNextLevel,
+      torchTime: torchTime,
     );
   }
 }

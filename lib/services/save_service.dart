@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/game_state.dart';
+import '../models/quest.dart';
 
 /// Where the save game is kept.
 abstract class SaveStorage {
@@ -46,9 +47,10 @@ class MemorySaveStorage implements SaveStorage {
 class SaveSummary {
   final int day;
   final int level;
+  final int chapter;
   final String progress;
 
-  const SaveSummary({required this.day, required this.level, required this.progress});
+  const SaveSummary({required this.day, required this.level, required this.chapter, required this.progress});
 }
 
 class SaveService {
@@ -85,7 +87,8 @@ class SaveService {
     return SaveSummary(
       day: state.world.day,
       level: state.player.level,
-      progress: quest == null ? 'Chapter 1 complete' : quest.title,
+      chapter: state.chapter,
+      progress: quest == null ? 'Chapter ${Quest.chapterCount} complete' : quest.title,
     );
   }
 

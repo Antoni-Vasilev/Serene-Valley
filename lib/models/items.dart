@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-enum ItemKind { material, food, tool, placeable }
+enum ItemKind { material, food, tool, placeable, light }
 
 class ItemInfo {
   final String id;
@@ -156,7 +156,71 @@ class Items {
       icon: Icons.shield,
       color: Color(0xFFC89B6D),
       kind: ItemKind.tool,
-      description: 'A toy-like sword. The valley is peaceful, for now.',
+      description: 'The valley is peaceful, but it cuts through cobwebs nicely.',
+    ),
+    'resin': ItemInfo(
+      id: 'resin',
+      name: 'Pine resin',
+      icon: Icons.water_drop,
+      color: Color(0xFFF2B33D),
+      kind: ItemKind.material,
+      description: 'Sticky resin from pine trees. It burns well.',
+    ),
+    'torch': ItemInfo(
+      id: 'torch',
+      name: 'Torch',
+      icon: Icons.local_fire_department,
+      color: Color(0xFFFF8A3D),
+      kind: ItemKind.light,
+      description: 'Lights up the dark for a few minutes. Lit by itself in the mine.',
+    ),
+    'iron_ore': ItemInfo(
+      id: 'iron_ore',
+      name: 'Iron ore',
+      icon: Icons.terrain,
+      color: Color(0xFFD07A44),
+      kind: ItemKind.material,
+      description: 'Rock with rusty streaks, from the old mine. Smelt it at the forge.',
+    ),
+    'iron_ingot': ItemInfo(
+      id: 'iron_ingot',
+      name: 'Iron ingot',
+      icon: Icons.view_agenda,
+      color: Color(0xFFB4C4D8),
+      kind: ItemKind.material,
+      description: 'Smelted iron, ready for crafting.',
+    ),
+    'crystal': ItemInfo(
+      id: 'crystal',
+      name: 'Crystal',
+      icon: Icons.diamond,
+      color: Color(0xFFB89CFF),
+      kind: ItemKind.material,
+      description: 'A softly glowing crystal from deep in the mine.',
+    ),
+    'iron_axe': ItemInfo(
+      id: 'iron_axe',
+      name: 'Iron axe',
+      icon: Icons.carpenter,
+      color: Color(0xFFB4C4D8),
+      kind: ItemKind.tool,
+      description: 'Fells a tree in two swings. Used automatically.',
+    ),
+    'iron_pickaxe': ItemInfo(
+      id: 'iron_pickaxe',
+      name: 'Iron pickaxe',
+      icon: Icons.hardware,
+      color: Color(0xFFB4C4D8),
+      kind: ItemKind.tool,
+      description: 'Breaks a rock in two hits, and even fallen rocks. Used automatically.',
+    ),
+    'lantern': ItemInfo(
+      id: 'lantern',
+      name: 'Lantern',
+      icon: Icons.light,
+      color: Color(0xFFD8C8FF),
+      kind: ItemKind.tool,
+      description: 'A crystal lantern that never goes out. Lights the dark wherever you go.',
     ),
   };
 

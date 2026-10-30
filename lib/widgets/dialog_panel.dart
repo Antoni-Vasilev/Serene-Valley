@@ -29,14 +29,14 @@ class _DialogPanelState extends State<DialogPanel> {
 
   @override
   Widget build(BuildContext context) {
-    final npc = gameState.world.npc(gameState.dialogNpcId!)!;
+    final npc = gameState.dialogNpc!;
     final isElder = npc.id == Npc.elderId;
     final quest = gameState.currentQuest;
     final replying = gameState.dialogReply != null;
     final text = gameState.dialogText;
     // Each villager has their own voice for the letters as they appear.
     final voice = switch (npc.id) {
-      Npc.elderId => 'blip_low',
+      Npc.elderId || Npc.bramId => 'blip_low',
       Npc.tomId => 'blip_mid',
       _ => 'blip_high',
     };
@@ -106,7 +106,8 @@ class _DialogPanelState extends State<DialogPanel> {
                         child: SingleChildScrollView(child: _TypedText(text, voice: voice, instant: _skipped == text)),
                       ),
                     ),
-                    if (isElder && quest != null) ...[
+                    // Once a chapter ends, its next task waits for the next one.
+                    if (isElder && quest != null && (gameState.questAccepted || !replying)) ...[
                       const SizedBox(height: 10),
                       _QuestBox(gameState: gameState, quest: quest, isNew: replying),
                     ],
@@ -245,6 +246,17 @@ class _QuestBox extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 6),
+          if (quest.meetHint case final hint?)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 2),
+              child: Row(
+                children: [
+                  const PixelIcon('search', size: 20),
+                  const SizedBox(width: 8),
+                  Expanded(child: Text(hint, style: pixelText(15, color: UiColors.ink))),
+                ],
+              ),
+            ),
           for (final e in quest.requires.entries)
             Padding(
               padding: const EdgeInsets.symmetric(vertical: 2),
@@ -361,6 +373,11 @@ class ChapterCompletePanel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final chapter = gameState.celebratingChapter;
+    final next = Quest.chapterTitles[chapter + 1];
+    final outro = next == null
+        ? 'Thanks for playing Serene Valley! The story continues in the next update.'
+        : 'Elder Rowan has a new task for you. Chapter ${chapter + 1}, $next, begins!';
     return PixelModal(
       child: Column(
         mainAxisSize: MainAxisSize.min,
@@ -376,13 +393,13 @@ class ChapterCompletePanel extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 12),
-          Text('Chapter 1 complete!', style: pixelText(28, bold: true, color: UiColors.gold), textAlign: TextAlign.center),
+          Text('Chapter $chapter complete!',
+              style: pixelText(28, bold: true, color: UiColors.gold), textAlign: TextAlign.center),
           const SizedBox(height: 4),
-          Text('The Valley Awakens', style: pixelText(17, color: UiColors.faded)),
+          Text(Quest.chapterTitles[chapter]!, style: pixelText(17, color: UiColors.faded)),
           const SizedBox(height: 16),
           Text(
-            'You rebuilt the bridge, lit the village fire, fed everyone and brought in the first harvest.\n\n'
-            'Thanks for playing the first version of Serene Valley. The story continues in the next update!',
+            '${Quest.chapterSummaries[chapter]}\n\n$outro',
             style: pixelText(16),
             textAlign: TextAlign.center,
           ),

@@ -189,9 +189,11 @@ const chordNotes = {
   'Em': ['E3', 'G3', 'B3'],
   'Dm': ['D3', 'F3', 'A3'],
   'E': ['E3', 'G#3', 'B3'],
+  'A': ['A3', 'C#4', 'E4'],
+  'Bb': ['Bb3', 'D4', 'F4'],
 };
-const bassRoot = {'C': 'C3', 'Am': 'A2', 'F': 'F2', 'G': 'G2', 'Em': 'E2', 'Dm': 'D3', 'E': 'E2'};
-const bassFifth = {'C': 'G2', 'Am': 'E2', 'F': 'C3', 'G': 'D3', 'Em': 'B2', 'Dm': 'A2', 'E': 'B2'};
+const bassRoot = {'C': 'C3', 'Am': 'A2', 'F': 'F2', 'G': 'G2', 'Em': 'E2', 'Dm': 'D3', 'E': 'E2', 'A': 'A2', 'Bb': 'Bb2'};
+const bassFifth = {'C': 'G2', 'Am': 'E2', 'F': 'C3', 'G': 'D3', 'Em': 'B2', 'Dm': 'A2', 'E': 'B2', 'A': 'E2', 'Bb': 'F2'};
 
 // -----------------------------------------------------------------------------
 // Music
@@ -278,6 +280,50 @@ Track nightMusic() {
   return track;
 }
 
+const mineLead = 'D5.4 r.2 A4.2 | F5.4 E5.2 D5.2 | C5.6 r.2 | A4.8 | '
+    'D5.4 r.2 F5.2 | G5.4 A5.2 G5.2 | F5.6 r.2 | E5.8 | '
+    'F5.4 r.2 E5.2 | D5.4 C5.2 A4.2 | Bb4.4 C5.4 | D5.8';
+const mineBpm = 66.0;
+
+/// A slow, echoing tune in D minor for the old mine, about 44 seconds long.
+Track mineMusic() {
+  const eighth = 60 / mineBpm / 2;
+  const bar = eighth * 8;
+  const chords = ['Dm', 'Dm', 'C', 'Am', 'Dm', 'C', 'F', 'A', 'Dm', 'F', 'Bb', 'Dm'];
+  final track = Track(bar * chords.length, loops: true);
+
+  // The tune, with two fading echoes off the tunnel walls.
+  melody(mineLead, eighth, (start, length, note) {
+    final f = hz(note);
+    track.note(start, length * 0.85, f, triangle, const Envelope(0.02, 0.3, 0.45, 0.4), 0.24, vibrato: 0.003);
+    for (final (delay, volume) in const [(0.36, 0.07), (0.72, 0.03)]) {
+      track.note(start + delay, length * 0.6, f, triangle, const Envelope(0.02, 0.2, 0.3, 0.3), volume);
+    }
+  });
+
+  final r = Random(23);
+  for (var b = 0; b < chords.length; b++) {
+    final start = b * bar;
+    final notes = chordNotes[chords[b]]!;
+    // A low drone of the chord, swelling slowly.
+    track.note(start, bar * 0.96, hz(bassRoot[chords[b]]!), sine, const Envelope(0.6, 0.4, 0.8, 0.8), 0.3);
+    track.note(start, bar * 0.9, hz(bassFifth[chords[b]]!) * 2, sine, const Envelope(0.8, 0.4, 0.6, 0.8), 0.06);
+    for (final n in notes) {
+      track.note(start, bar * 0.92, hz(n), sine, const Envelope(0.8, 0.3, 0.6, 0.7), 0.035);
+    }
+    // Water dripping in tune, here and there.
+    for (var i = 0; i < 2; i++) {
+      final at = start + r.nextInt(8) * eighth + eighth / 2;
+      final f = hz(notes[r.nextInt(notes.length)]) * 4;
+      track.note(at, 0.03, f, sine, const Envelope(0.002, 0.35, 0, 0.05), 0.05, endFreq: f * 0.97);
+      track.note(at + 0.3, 0.03, f, sine, const Envelope(0.002, 0.3, 0, 0.05), 0.02, endFreq: f * 0.97);
+    }
+  }
+  track.lowPass(3500);
+  track.normalize(0.6);
+  return track;
+}
+
 // -----------------------------------------------------------------------------
 // Ambience
 
@@ -338,6 +384,31 @@ Track nightAmbience() {
     t.note(start + 0.55, 0.45, 330, sine, const Envelope(0.05, 0.1, 0.7, 0.2), 0.12);
   }
   t.normalize(0.45);
+  return t;
+}
+
+Track mineAmbience() {
+  final t = Track(24, loops: true);
+  final r = Random(29);
+  // A low hum of air moving through the tunnels.
+  wind(t, 0.35, cutoff: 140, period: 12);
+  // Drips, echoing off the walls.
+  for (var i = 0; i < 26; i++) {
+    final at = r.nextDouble() * 24;
+    final f = 900 + r.nextDouble() * 1300;
+    final volume = 0.12 + r.nextDouble() * 0.1;
+    for (final (delay, fade) in const [(0.0, 1.0), (0.14, 0.35), (0.29, 0.12)]) {
+      t.note(at + delay, 0.02, f, sine, const Envelope(0.001, 0.06, 0, 0.02), volume * fade, endFreq: f * 0.6);
+    }
+  }
+  // Now and then a pebble skitters down somewhere far off.
+  for (final at in const [7.5, 18.0]) {
+    for (var i = 0; i < 4; i++) {
+      t.noise(at + i * 0.09 + r.nextDouble() * 0.04, 0.003, const Envelope.hit(0.03), 0.25 - i * 0.04,
+          cutoff: 1800, seed: 600 + i);
+    }
+  }
+  t.normalize(0.5);
   return t;
 }
 
@@ -514,6 +585,52 @@ Map<String, Track> effects() => {
           t.note(at, 0.07, 150, square(0.5), const Envelope(0.002, 0.05, 0.6, 0.02), 0.5);
         }
       }, peak: 0.35),
+      'torch': sfx(0.5, (t) {
+        t.noise(0, 0.22, const Envelope(0.02, 0.22, 0.3, 0.12), 1.0, cutoff: 300, endCutoff: 2600);
+        t.note(0, 0.12, 120, triangle, const Envelope.hit(0.14), 0.5, endFreq: 70);
+        final r = Random(31);
+        for (var i = 0; i < 6; i++) {
+          t.noise(0.15 + r.nextDouble() * 0.3, 0.001, const Envelope.hit(0.004), 0.5,
+              cutoff: 2500, highPass: true, seed: 700 + i);
+        }
+      }, peak: 0.6),
+      'fizzle': sfx(0.6, (t) {
+        t.noise(0, 0.45, const Envelope(0.005, 0.45, 0.15, 0.1), 0.9, cutoff: 5000, endCutoff: 600, highPass: true);
+        t.note(0.05, 0.2, 300, sine, const Envelope.hit(0.25), 0.25, endFreq: 120);
+      }, peak: 0.45),
+      'swish': sfx(0.22, (t) {
+        t.noise(0, 0.12, const Envelope(0.015, 0.1, 0.3, 0.05), 1.0, cutoff: 1200, endCutoff: 6000, highPass: true);
+        t.note(0.02, 0.08, 900, sine, const Envelope.hit(0.1), 0.15, endFreq: 1800);
+      }, peak: 0.55),
+      'crumble': sfx(0.9, (t) {
+        t.noise(0, 0.5, const Envelope(0.01, 0.5, 0.3, 0.25), 1.0, cutoff: 400, endCutoff: 120);
+        t.note(0, 0.3, 90, triangle, const Envelope.hit(0.35), 0.6, endFreq: 45);
+        final r = Random(37);
+        for (var i = 0; i < 9; i++) {
+          final f = 500 + r.nextDouble() * 900;
+          t.note(0.05 + r.nextDouble() * 0.6, 0.02, f, square(0.5), const Envelope.hit(0.03), 0.2, endFreq: f * 0.7);
+        }
+      }, peak: 0.75),
+      'smelt': sfx(0.9, (t) {
+        // A ringing clang, then the hiss of hot iron.
+        for (final (f, v) in const [(820.0, 0.5), (1290.0, 0.3), (2110.0, 0.18)]) {
+          t.note(0, 0.5, f, sine, const Envelope(0.001, 0.5, 0, 0.1), v);
+        }
+        t.noise(0, 0.004, const Envelope.hit(0.02), 0.6, cutoff: 3000, highPass: true);
+        t.noise(0.18, 0.5, const Envelope(0.02, 0.5, 0.2, 0.15), 0.35,
+            cutoff: 6000, endCutoff: 2500, highPass: true, seed: 3);
+      }, peak: 0.6),
+      'chime': sfx(1.1, (t) {
+        for (final (i, n) in const ['E6', 'B6', 'E7'].indexed) {
+          t.note(i * 0.07, 0.6, hz(n), sine, const Envelope(0.002, 0.8, 0, 0.1), 0.45 - i * 0.1);
+        }
+      }, peak: 0.5),
+      'climb': sfx(0.55, (t) {
+        for (final (i, at) in const [0.0, 0.17, 0.34].indexed) {
+          t.note(at, 0.05, 190 - i * 15.0, triangle, const Envelope.hit(0.06), 0.8, endFreq: 120);
+          t.noise(at, 0.003, const Envelope.hit(0.02), 0.35, cutoff: 2200, seed: 800 + i);
+        }
+      }, peak: 0.45),
       'fanfare': sfx(2.4, (t) {
         const eighth = 60 / 140 / 2;
         melody('C5.1 E5.1 G5.1 C6.3 | B5.1 G5.1 D6.2 | C6.6', eighth, (start, length, note) {
@@ -593,8 +710,10 @@ void main() {
   final tracks = <String, Track>{
     'music_day': dayMusic(),
     'music_night': nightMusic(),
+    'music_mine': mineMusic(),
     'ambience_day': dayAmbience(),
     'ambience_night': nightAmbience(),
+    'ambience_mine': mineAmbience(),
     'river': river(),
     'fire': fire(),
     ...effects(),
@@ -614,6 +733,7 @@ void main() {
 
   final dayWrong = checkPitches(tracks['music_day']!, dayLead, dayBpm);
   final nightWrong = checkPitches(tracks['music_night']!, nightLead, nightBpm);
-  print('Melody notes off pitch: day $dayWrong, night $nightWrong');
-  if (dayWrong + nightWrong > 0) exitCode = 1;
+  final mineWrong = checkPitches(tracks['music_mine']!, mineLead, mineBpm);
+  print('Melody notes off pitch: day $dayWrong, night $nightWrong, mine $mineWrong');
+  if (dayWrong + nightWrong + mineWrong > 0) exitCode = 1;
 }

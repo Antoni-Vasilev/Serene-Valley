@@ -2,41 +2,39 @@ import 'dart:collection';
 import 'dart:math';
 import 'package:flutter/material.dart';
 import 'farm.dart';
+import 'level.dart';
 import 'npc.dart';
 
-class World {
-  final int width;
-  final int height;
+/// The valley: the village on the west bank of the river, and the hills
+/// beyond it.
+class World extends Level {
   final int tileSize;
-  final int seed;
-  late final Random random = Random(seed);
 
   // Time system
   double timeOfDay;
   int day;
   bool isDay;
 
-  // Terrain, one tile type per cell.
-  List<List<String>> tiles;
-
   // Objects keyed '<type>_<x>_<y>', positioned at their tile's top-left corner.
   Map<String, Offset> trees;
-  Map<String, Offset> rocks;
   Map<String, Offset> animals;
   Map<String, Offset> plants;
   Map<String, Offset> appleTrees;
   // Hours until a picked berry bush or apple tree bears fruit again.
   Map<String, double> regrowTimers;
+  // Caves in the eastern hills. The first one leads into the old mine.
   List<Offset> caveEntrances;
+  // Whether Elder Rowan has handed over the key to the old mine.
+  bool mineOpen;
 
   // Village
   Offset playerSpawn;
   List<Offset> villageLocations;
-  List<Npc> npcs;
   Offset bed;
   Offset firePit;
   bool firePitBuilt;
-  List<Offset> campfires;
+  // The old forge east of the plaza.
+  bool forgeBuilt;
 
   // The storm-broken bridge on the road east of the village.
   List<Point<int>> bridgeTiles;
@@ -47,9 +45,6 @@ class World {
   bool farmUnlocked;
   // Crops keyed '<x>_<y>'.
   Map<String, Crop> crops;
-
-  // Tiles blocked by objects: villagers, the bed and fires.
-  Set<Point<int>> _solid = {};
 
   // Generation scratch data.
   List<int> _riverWest = [];
@@ -73,26 +68,23 @@ class World {
   };
 
   World({
-    this.width = 100,
-    this.height = 100,
+    super.width = 100,
+    super.height = 100,
     this.tileSize = 16,
-    int? seed,
-  })  : seed = seed ?? Random().nextInt(1 << 31),
-        tiles = [],
-        trees = {},
-        rocks = {},
+    super.seed,
+  })  : trees = {},
         animals = {},
         plants = {},
         appleTrees = {},
         regrowTimers = {},
         caveEntrances = [],
+        mineOpen = false,
         playerSpawn = const Offset(50, 50),
         villageLocations = [],
-        npcs = [],
         bed = Offset.zero,
         firePit = Offset.zero,
         firePitBuilt = false,
-        campfires = [],
+        forgeBuilt = false,
         bridgeTiles = [],
         bridgeBuilt = false,
         farmArea = Rect.zero,
@@ -106,9 +98,25 @@ class World {
       villageLocations.isEmpty ? Offset(width / 2, height / 2) : villageLocations.first;
 
   /// Fires that are burning: the village fire pit once rebuilt, and campfires.
+  @override
   List<Offset> get fires => [if (firePitBuilt) firePit, ...campfires];
 
-  Npc? npc(String id) => npcs.where((n) => n.id == id).firstOrNull;
+  /// The way into the old mine.
+  Offset? get mineEntrance => caveEntrances.firstOrNull;
+
+  /// The two tiles the forge stands on, east of the plaza.
+  List<Point<int>> get forgeTiles {
+    final x = villageCenter.dx.toInt() + 7;
+    final y = villageCenter.dy.toInt() - 3;
+    return [Point(x, y), Point(x + 1, y)];
+  }
+
+  /// Where Bram the miner stands once he is home again, beside the forge.
+  Offset get minerHome => villageCenter + const Offset(9, -3);
+
+  /// Whether the tree on (x, y) is a pine, which also gives resin. Pines
+  /// grow in the forest, among the oaks.
+  bool isPine(int x, int y) => getTileAt(x, y) == 'forest_grass' && tileHash(x, y) < 0.5;
 
   List<Rect>? _houses;
 
@@ -158,6 +166,7 @@ class World {
       _generateOnce();
       if (_isPlayable()) break;
     }
+    _ensureMineEntrance();
     _reserved = [];
     _mountainEdge = [];
   }
@@ -179,9 +188,10 @@ class World {
     crops = {};
     bridgeBuilt = false;
     firePitBuilt = false;
+    forgeBuilt = false;
+    mineOpen = false;
     farmUnlocked = false;
     _mountainEdge = [];
-    _solid = {};
     _houses = null;
 
     _generateTerrain();
@@ -511,7 +521,7 @@ class World {
   bool _isPlayable() {
     final start = Point(playerSpawn.dx.toInt(), playerSpawn.dy.toInt());
     final westBank = reachableTiles(start);
-    final withBridge = reachableTiles(start, assumeBridge: true);
+    final withBridge = reachableTiles(start, cleared: true);
     bool reachable(Set<Point<int>> area, Offset o) => area.contains(Point(o.dx.toInt(), o.dy.toInt()));
 
     final treesNearVillage = trees.values.where((t) => reachable(westBank, t)).length;
@@ -519,35 +529,44 @@ class World {
     return treesNearVillage >= 15 && rocksAcrossRiver >= 12;
   }
 
-  /// Tiles reachable on foot from [start]. With [assumeBridge], the broken
-  /// bridge counts as already rebuilt; [blocked] tiles count as solid.
-  Set<Point<int>> reachableTiles(
-    Point<int> start, {
-    bool assumeBridge = false,
-    Set<Point<int>> blocked = const {},
-  }) {
-    final bridge = assumeBridge ? bridgeTiles.toSet() : const <Point<int>>{};
-    bool open(Point<int> p) => (isWalkable(p.x, p.y) || bridge.contains(p)) && !blocked.contains(p);
-
-    final seen = <Point<int>>{};
-    if (!open(start)) return seen;
-    final queue = Queue<Point<int>>()..add(start);
-    seen.add(start);
-    while (queue.isNotEmpty) {
-      final p = queue.removeFirst();
-      for (final n in [
-        Point(p.x + 1, p.y),
-        Point(p.x - 1, p.y),
-        Point(p.x, p.y + 1),
-        Point(p.x, p.y - 1),
-      ]) {
-        if (!seen.contains(n) && open(n)) {
-          seen.add(n);
-          queue.add(n);
-        }
+  /// Makes sure the first cave is one the player can walk up to, as it leads
+  /// into the old mine. If no cave can be reached, a new one opens in the
+  /// rock face closest to the bridge.
+  void _ensureMineEntrance() {
+    final reachable = reachableTiles(spawnTile, cleared: true);
+    final open = caveEntrances.where((c) => reachable.contains(Point(c.dx.toInt(), c.dy.toInt() + 1)));
+    if (open.isNotEmpty) {
+      final entrance = open.first;
+      caveEntrances = [entrance, ...caveEntrances.where((c) => c != entrance)];
+      _clearMineApproach();
+      return;
+    }
+    final landing = bridgeTiles.isEmpty
+        ? playerSpawn
+        : Offset(bridgeTiles.map((p) => p.x).reduce(max) + 1.0, bridgeTiles.first.y.toDouble());
+    Point<int>? best;
+    var bestDistance = double.infinity;
+    for (final p in reachable) {
+      if (getTileAt(p.x, p.y - 1) != 'stone') continue;
+      final d = (Offset(p.x.toDouble(), p.y.toDouble()) - landing).distanceSquared;
+      if (d < bestDistance) {
+        bestDistance = d;
+        best = Point(p.x, p.y - 1);
       }
     }
-    return seen;
+    if (best != null) caveEntrances.insert(0, Offset(best.x.toDouble(), best.y.toDouble()));
+    _clearMineApproach();
+  }
+
+  /// Clears the spot in front of the mine, so nothing else is in the way
+  /// of going in.
+  void _clearMineApproach() {
+    final entrance = mineEntrance;
+    if (entrance == null) return;
+    final spot = entrance + const Offset(0, 1);
+    for (final objects in [trees, rocks, plants, animals]) {
+      objects.removeWhere((_, o) => o == spot);
+    }
   }
 
   bool _inBounds(int x, int y) => x >= 0 && x < width && y >= 0 && y < height;
@@ -583,65 +602,28 @@ class World {
   // ---------------------------------------------------------------------------
   // Queries
 
-  String getTileAt(int x, int y) {
-    if (x >= 0 && x < width && y >= 0 && y < height) {
-      return tiles[y][x];
-    }
-    return 'void';
-  }
+  @override
+  Set<String> get walkableTiles => _walkableTiles;
 
-  bool isWalkable(int x, int y) =>
-      _walkableTiles.contains(getTileAt(x, y)) && !_solid.contains(Point(x, y));
-
-  void refreshSolid() {
-    _solid = {
-      for (final n in npcs) Point(n.position.dx.toInt(), n.position.dy.toInt()),
-      for (final f in [firePit, bed, ...campfires]) Point(f.dx.toInt(), f.dy.toInt()),
-    };
-  }
+  @override
+  Iterable<Point<int>> get solidTiles => [
+        for (final n in npcs) Level.tileOf(n.position),
+        for (final f in [firePit, bed, ...campfires]) Level.tileOf(f),
+        // Standing or in ruins, the forge is in the way.
+        ...forgeTiles,
+      ];
 
   Point<int> get spawnTile => Point(playerSpawn.dx.toInt(), playerSpawn.dy.toInt());
 
-  /// The tile closest to [origin] that can be reached on foot from the
-  /// village, so whoever is placed there can never end up sealed in.
-  Offset nearestReachableTile(Offset origin) {
-    // Anything connected to the elder counts as part of the village.
-    final elder = npc(Npc.elderId)?.position;
-    final anchors = elder == null
-        ? [spawnTile]
-        : [
-            for (final d in const [Point(1, 0), Point(-1, 0), Point(0, 1), Point(0, -1)])
-              Point(elder.dx.toInt() + d.x, elder.dy.toInt() + d.y),
-          ];
-    final reachable = <Point<int>>{};
-    for (final anchor in anchors) {
-      if (!reachable.contains(anchor)) reachable.addAll(reachableTiles(anchor));
-    }
-    if (reachable.isEmpty) return findWalkableNear(origin);
-    final best = reachable.reduce((a, b) {
-      final da = (Offset(a.x + 0.5, a.y + 0.5) - origin).distanceSquared;
-      final db = (Offset(b.x + 0.5, b.y + 0.5) - origin).distanceSquared;
-      return da <= db ? a : b;
-    });
-    return Offset(best.x.toDouble(), best.y.toDouble());
+  /// Anything connected to the elder counts as part of the village.
+  @override
+  List<Point<int>> get homeTiles {
+    final elder = npc(Npc.elderId);
+    return elder == null ? [spawnTile] : Level.around(elder.position);
   }
 
-  /// Returns the walkable tile closest to [origin], searching outward in rings.
-  Offset findWalkableNear(Offset origin) {
-    final ox = origin.dx.floor().clamp(0, width - 1);
-    final oy = origin.dy.floor().clamp(0, height - 1);
-    for (int r = 0; r < max(width, height); r++) {
-      for (int y = oy - r; y <= oy + r; y++) {
-        for (int x = ox - r; x <= ox + r; x++) {
-          final onRing = (x - ox).abs() == r || (y - oy).abs() == r;
-          if (onRing && isWalkable(x, y)) {
-            return Offset(x.toDouble(), y.toDouble());
-          }
-        }
-      }
-    }
-    return Offset(ox.toDouble(), oy.toDouble());
-  }
+  @override
+  Set<Point<int>> get clearableTiles => bridgeBuilt ? const <Point<int>>{} : bridgeTiles.toSet();
 
   bool isBridgeSite(int x, int y) => !bridgeBuilt && bridgeTiles.contains(Point(x, y));
 
@@ -649,29 +631,23 @@ class World {
 
   static const Set<String> _campfireGround = {'grass', 'forest_grass', 'dirt', 'sand', 'path'};
 
-  /// Whether a player standing on [from] may place a campfire on (x, y).
-  /// Fires are solid, so one may never cut off a place the story needs.
-  bool canPlaceCampfire(int x, int y, {required Point<int> from}) {
-    final spot = Point(x, y);
-    if (!isWalkable(x, y) || !_campfireGround.contains(getTileAt(x, y)) || spot == spawnTile) return false;
+  @override
+  bool isCampfireGround(int x, int y) {
     final o = Offset(x.toDouble(), y.toDouble());
-    if (trees.containsValue(o) || rocks.containsValue(o) || plants.containsValue(o) || appleTrees.containsValue(o)) {
-      return false;
-    }
-    final reachable = reachableTiles(from, blocked: {spot});
-    return _essentialPlaces().every((place) => place.any(reachable.contains));
+    return _campfireGround.contains(getTileAt(x, y)) &&
+        Point(x, y) != spawnTile &&
+        o != minerHome &&
+        !trees.containsValue(o) &&
+        !rocks.containsValue(o) &&
+        !plants.containsValue(o) &&
+        !appleTrees.containsValue(o);
   }
 
-  /// Groups of tiles of which at least one must always stay reachable: the
-  /// spawn point, a spot next to each villager, the bed and the fire pit,
-  /// the farm field and both ends of the bridge.
-  List<List<Point<int>>> _essentialPlaces() {
-    List<Point<int>> around(Offset o) {
-      final x = o.dx.toInt();
-      final y = o.dy.toInt();
-      return [Point(x + 1, y), Point(x - 1, y), Point(x, y + 1), Point(x, y - 1)];
-    }
-
+  /// The spawn point, a spot next to each villager, the bed, the fire pit
+  /// and the forge, Bram's place beside it, the farm field, both ends of the
+  /// bridge and the way into the mine.
+  @override
+  List<List<Point<int>>> essentialPlaces() {
     final rows = {for (final p in bridgeTiles) p.y};
     List<Point<int>> bridgeEnd({required bool east}) => [
           for (final y in rows)
@@ -679,18 +655,22 @@ class World {
                 ? Point(bridgeTiles.where((p) => p.y == y).map((p) => p.x).reduce(max) + 1, y)
                 : Point(bridgeTiles.where((p) => p.y == y).map((p) => p.x).reduce(min) - 1, y),
         ];
+    final entrance = mineEntrance;
 
     return [
       [spawnTile],
-      for (final npc in npcs) around(npc.position),
-      around(bed),
-      around(firePit),
+      for (final npc in npcs) Level.around(npc.position),
+      Level.around(bed),
+      Level.around(firePit),
+      [for (final t in forgeTiles) ...Level.neighbours(t)],
+      Level.around(minerHome),
       [
         for (int y = farmArea.top.toInt(); y < farmArea.bottom; y++)
           for (int x = farmArea.left.toInt(); x < farmArea.right; x++) Point(x, y),
       ],
       if (rows.isNotEmpty) bridgeEnd(east: false),
-      if (rows.isNotEmpty && bridgeBuilt) bridgeEnd(east: true),
+      if (rows.isNotEmpty) bridgeEnd(east: true),
+      if (entrance != null) [Point(entrance.dx.toInt(), entrance.dy.toInt() + 1)],
     ];
   }
 
@@ -709,6 +689,20 @@ class World {
     refreshSolid();
   }
 
+  /// Takes away the campfires an older save may have where the forge or
+  /// Bram belong, and returns how many there were.
+  int clearStoryGround() {
+    final before = campfires.length;
+    campfires.removeWhere((c) => forgeTiles.contains(Level.tileOf(c)) || c == minerHome);
+    refreshSolid();
+    return before - campfires.length;
+  }
+
+  void buildForge() {
+    forgeBuilt = true;
+    refreshSolid();
+  }
+
   void unlockFarm() {
     farmUnlocked = true;
     for (int y = farmArea.top.toInt(); y < farmArea.bottom; y++) {
@@ -716,11 +710,6 @@ class World {
         tiles[y][x] = 'farmland';
       }
     }
-  }
-
-  void placeCampfire(int x, int y) {
-    campfires.add(Offset(x.toDouble(), y.toDouble()));
-    refreshSolid();
   }
 
   void pickFruit(String key) {
@@ -771,6 +760,7 @@ class World {
   }
 
   /// 1.0 in full daylight (6-18), fading through dawn (4-6) and dusk (18-20).
+  @override
   double getLightLevel() {
     const night = 0.15;
     final t = timeOfDay;
@@ -804,28 +794,28 @@ class World {
         'seed': seed,
         'time': timeOfDay,
         'day': day,
-        'tiles': [for (final row in tiles) row.map((t) => _tileCodes[t] ?? 'g').join()],
+        'tiles': Level.tilesToJson(tiles, _tileCodes),
         'trees': trees.keys.toList(),
         'rocks': rocks.keys.toList(),
         'plants': plants.keys.toList(),
         'animals': animals.keys.toList(),
         'appleTrees': appleTrees.keys.toList(),
         'regrow': regrowTimers,
-        'caves': [for (final c in caveEntrances) _point(c)],
-        'village': _point(villageCenter),
-        'spawn': _point(playerSpawn),
-        'bed': _point(bed),
-        'firePit': _point(firePit),
+        'caves': [for (final c in caveEntrances) Level.pointToJson(c)],
+        'mineOpen': mineOpen,
+        'village': Level.pointToJson(villageCenter),
+        'spawn': Level.pointToJson(playerSpawn),
+        'bed': Level.pointToJson(bed),
+        'firePit': Level.pointToJson(firePit),
         'firePitBuilt': firePitBuilt,
-        'campfires': [for (final c in campfires) _point(c)],
-        'bridge': [
-          for (final p in bridgeTiles) [p.x, p.y]
-        ],
+        'forgeBuilt': forgeBuilt,
+        'campfires': [for (final c in campfires) Level.pointToJson(c)],
+        'bridge': Level.tilesListToJson(bridgeTiles),
         'bridgeBuilt': bridgeBuilt,
         'farm': [farmArea.left, farmArea.top, farmArea.width, farmArea.height],
         'farmUnlocked': farmUnlocked,
         'crops': {for (final e in crops.entries) e.key: e.value.toJson()},
-        'npcs': {for (final n in npcs) n.id: _point(n.position)},
+        'npcs': {for (final n in npcs) n.id: Level.pointToJson(n.position)},
       };
 
   factory World.fromJson(Map<String, dynamic> json) {
@@ -834,32 +824,29 @@ class World {
       height: json['height'] as int,
       seed: json['seed'] as int,
     );
-    final tileTypes = {for (final e in _tileCodes.entries) e.value: e.key};
-    world.tiles = [
-      for (final row in json['tiles'] as List)
-        [for (final code in (row as String).split('')) tileTypes[code] ?? 'grass'],
-    ];
+    world.tiles = Level.tilesFromJson(json['tiles'], _tileCodes);
     world.timeOfDay = (json['time'] as num).toDouble();
     world.day = json['day'] as int;
     world.isDay = world.timeOfDay >= 6.0 && world.timeOfDay < 18.0;
-    world.trees = _fromKeys(json['trees']);
-    world.rocks = _fromKeys(json['rocks']);
-    world.plants = _fromKeys(json['plants']);
-    world.animals = _fromKeys(json['animals']);
-    world.appleTrees = _fromKeys(json['appleTrees']);
+    world.trees = Level.objectsFromJson(json['trees']);
+    world.rocks = Level.objectsFromJson(json['rocks']);
+    world.plants = Level.objectsFromJson(json['plants']);
+    world.animals = Level.objectsFromJson(json['animals']);
+    world.appleTrees = Level.objectsFromJson(json['appleTrees']);
     world.regrowTimers = {
       for (final e in (json['regrow'] as Map).entries) e.key as String: (e.value as num).toDouble(),
     };
-    world.caveEntrances = [for (final c in json['caves'] as List) _offset(c)];
-    world.villageLocations = [_offset(json['village'])];
-    world.playerSpawn = _offset(json['spawn']);
-    world.bed = _offset(json['bed']);
-    world.firePit = _offset(json['firePit']);
+    world.caveEntrances = [for (final c in json['caves'] as List) Level.pointFromJson(c)];
+    // Saves from before chapter 2 have no mine or forge yet.
+    world.mineOpen = json['mineOpen'] as bool? ?? false;
+    world.villageLocations = [Level.pointFromJson(json['village'])];
+    world.playerSpawn = Level.pointFromJson(json['spawn']);
+    world.bed = Level.pointFromJson(json['bed']);
+    world.firePit = Level.pointFromJson(json['firePit']);
     world.firePitBuilt = json['firePitBuilt'] as bool;
-    world.campfires = [for (final c in json['campfires'] as List) _offset(c)];
-    world.bridgeTiles = [
-      for (final p in json['bridge'] as List) Point((p as List)[0] as int, p[1] as int),
-    ];
+    world.forgeBuilt = json['forgeBuilt'] as bool? ?? false;
+    world.campfires = [for (final c in json['campfires'] as List) Level.pointFromJson(c)];
+    world.bridgeTiles = Level.tilesListFromJson(json['bridge']);
     world.bridgeBuilt = json['bridgeBuilt'] as bool;
     final farm = (json['farm'] as List).map((v) => (v as num).toDouble()).toList();
     world.farmArea = Rect.fromLTWH(farm[0], farm[1], farm[2], farm[3]);
@@ -868,25 +855,10 @@ class World {
       for (final e in (json['crops'] as Map).entries) e.key as String: Crop.fromJson(e.value as List),
     };
     world.npcs = [
-      for (final e in (json['npcs'] as Map).entries) Npc.create(e.key as String, _offset(e.value)),
+      for (final e in (json['npcs'] as Map).entries) Npc.create(e.key as String, Level.pointFromJson(e.value)),
     ];
     world.refreshSolid();
+    world._ensureMineEntrance();
     return world;
-  }
-
-  static List<double> _point(Offset o) => [o.dx, o.dy];
-
-  static Offset _offset(dynamic json) {
-    final list = json as List;
-    return Offset((list[0] as num).toDouble(), (list[1] as num).toDouble());
-  }
-
-  static Map<String, Offset> _fromKeys(dynamic keys) => {
-        for (final key in (keys as List).cast<String>()) key: _positionOfKey(key),
-      };
-
-  static Offset _positionOfKey(String key) {
-    final parts = key.split('_');
-    return Offset(double.parse(parts[parts.length - 2]), double.parse(parts.last));
   }
 }

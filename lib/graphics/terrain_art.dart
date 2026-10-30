@@ -226,6 +226,129 @@ class TerrainArt {
   }
 
   // ---------------------------------------------------------------------------
+  // The old mine
+
+  /// The floor of a tunnel: packed earth and grit.
+  static PixelCanvas caveFloor(Random r) {
+    const ramp = Palette.caveFloor;
+    final c = PixelCanvas(size, size)..fill(ramp[2]);
+    for (var i = 0; i < 16; i++) {
+      final x = r.nextInt(size);
+      final y = r.nextInt(size);
+      c.set(x, y, ramp[1]);
+      if (r.nextBool()) c.set((x + 1) % size, y, ramp[1]);
+    }
+    for (var i = 0; i < 7; i++) {
+      c.set(r.nextInt(size), r.nextInt(size), ramp[3]);
+    }
+    // Pebbles with a shadow underneath.
+    for (var i = 0; i < 3; i++) {
+      final x = 1 + r.nextInt(13);
+      final y = 1 + r.nextInt(13);
+      c.set(x, y, ramp[4]);
+      c.set(x + 1, y, ramp[3]);
+      c.set(x, y + 1, ramp[0]);
+      c.set(x + 1, y + 1, ramp[0]);
+    }
+    // A hairline crack.
+    if (r.nextBool()) {
+      var x = r.nextInt(size);
+      for (var y = r.nextInt(8), i = 0; i < 5; y++, i++) {
+        c.set(x, y, ramp[0]);
+        x = (x + r.nextInt(3) - 1).clamp(0, size - 1);
+      }
+    }
+    return c;
+  }
+
+  /// Solid rock seen from above: the top of a cave wall.
+  static PixelCanvas caveTop(Random r) {
+    const ramp = Palette.caveRock;
+    final c = PixelCanvas(size, size)..fill(ramp[2]);
+    for (var i = 0; i < 12; i++) {
+      final x = r.nextInt(size);
+      final y = r.nextInt(size);
+      c.set(x, y, ramp[1]);
+      c.set((x + 1) % size, y, ramp[1]);
+    }
+    for (var i = 0; i < 6; i++) {
+      c.set(r.nextInt(size), r.nextInt(size), ramp[3]);
+    }
+    return c;
+  }
+
+  /// The face of a cave wall: layered rock, lit along its top edge.
+  static PixelCanvas caveFace(Random r) {
+    const ramp = Palette.caveRock;
+    final c = PixelCanvas(size, size)..fill(ramp[3]);
+    // Layers of rock, each lit on top and shaded underneath.
+    for (var y = 3 + r.nextInt(2); y < size - 2; y += 3 + r.nextInt(2)) {
+      for (var x = 0; x < size; x++) {
+        if (r.nextDouble() < 0.85) c.set(x, y, ramp[2]);
+        if (r.nextDouble() < 0.5) c.set(x, y - 1, ramp[4]);
+      }
+    }
+    // Cracks running down.
+    for (var i = 0; i < 2; i++) {
+      var x = r.nextInt(size);
+      for (var y = 2 + r.nextInt(5); y < size - 2; y++) {
+        if (r.nextDouble() < 0.3) x = (x + (r.nextBool() ? 1 : -1)).clamp(0, size - 1);
+        c.set(x, y, ramp[1]);
+      }
+    }
+    // The top edge catches the light; the foot sits in shadow.
+    c.rect(0, 0, size, 1, ramp[4]);
+    c.rect(0, size - 2, size, 1, ramp[2]);
+    c.rect(0, size - 1, size, 1, ramp[1]);
+    return c;
+  }
+
+  /// The edge of a wall's top along the top of the tile, where it drops
+  /// away to the floor behind.
+  static PixelCanvas caveRim() {
+    const ramp = Palette.caveRock;
+    final c = PixelCanvas(size, size);
+    c.rect(0, 0, size, 1, ramp[4]);
+    c.rect(0, 1, size, 1, ramp[3]);
+    return c;
+  }
+
+  /// The side of a wall's face where it turns a corner: lit on the left,
+  /// in shadow on the right.
+  static PixelCanvas caveFaceSide({required bool left}) {
+    const ramp = Palette.caveRock;
+    final c = PixelCanvas(size, size);
+    c.rect(left ? 0 : size - 1, 0, 1, size, left ? ramp[4] : ramp[1]);
+    return c;
+  }
+
+  /// Shadow a cave wall casts on the floor in front of it.
+  static PixelCanvas caveShadow() {
+    final c = PixelCanvas(size, size);
+    c.rect(0, 0, size, 1, 0x78000000);
+    c.rect(0, 1, size, 1, 0x48000000);
+    c.rect(0, 2, size, 1, 0x24000000);
+    return c;
+  }
+
+  /// Old mine-cart rails running east to west.
+  static PixelCanvas rails() {
+    const wood = Palette.wood;
+    const steel = Palette.steel;
+    final c = PixelCanvas(size, size);
+    for (var x = 1; x < size; x += 4) {
+      c.rect(x, 3, 2, 10, wood[1]);
+      c.rect(x, 3, 2, 1, wood[2]);
+      c.rect(x, 12, 2, 1, wood[0]);
+    }
+    for (final y in const [5, 10]) {
+      c.rect(0, y, size, 1, steel[3]);
+      c.rect(0, y + 1, size, 1, steel[1]);
+    }
+    return c;
+  }
+
+  // ---------------------------------------------------------------------------
   // Overlays
 
   /// Shallows and foam along a shore on the top edge of a water tile. The

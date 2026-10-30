@@ -107,6 +107,33 @@ void main() {
     await tester.pump(const Duration(seconds: 4));
   });
 
+  testWidgets('the old mine shows its torchlight and its own map', (tester) async {
+    await usePhone(tester, phones['large phone']!);
+    final state = GameState(worldSeed: 3);
+    state.world.mineOpen = true;
+    state.player.addItem('torch', 2);
+    state.player.position = state.world.mineEntrance! + const Offset(0.5, 1.5);
+    final storage = MemorySaveStorage(jsonEncode(state.toJson()));
+    await tester.pumpWidget(SereneValleyApp(saveService: SaveService(storage: storage)));
+    await tester.pump();
+    await tester.tap(find.text('Continue'));
+    await frames(tester);
+    expect(find.text('Enter'), findsOneWidget);
+
+    await tester.tap(find.byKey(const ValueKey('action-button')));
+    await frames(tester, 30);
+    expect(find.text('Climb'), findsOneWidget);
+    expect(find.byTooltip('Torch'), findsOneWidget);
+
+    await tester.tap(find.byTooltip('Map'));
+    await frames(tester, 2);
+    expect(find.text('Old Mine'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+    await tester.tap(find.widgetWithText(PixelButton, 'Close'));
+    await frames(tester, 2);
+    await tester.pump(const Duration(seconds: 4));
+  });
+
   testWidgets('an existing save offers Continue on the title screen', (tester) async {
     await usePhone(tester, phones['small phone']!);
     final state = GameState(worldSeed: 3)..questIndex = 2;

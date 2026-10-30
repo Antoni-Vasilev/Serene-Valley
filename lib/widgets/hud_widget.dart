@@ -4,6 +4,7 @@ import '../graphics/ui_textures.dart';
 import '../models/game_state.dart';
 import '../models/items.dart';
 import '../models/player.dart';
+import '../models/quest.dart';
 import 'dialog_panel.dart';
 import 'map_overlay.dart';
 import 'pixel_ui.dart';
@@ -85,6 +86,7 @@ class HUDWidget extends StatelessWidget {
           ChapterCompletePanel(gameState: gameState),
         if (gameState.isPaused) _buildPauseMenu(context),
         if (gameState.isSleeping) _buildSleepFade(),
+        if (gameState.isTravelling) _buildTravelFade(),
       ],
     );
   }
@@ -104,6 +106,12 @@ class HUDWidget extends StatelessWidget {
           const SizedBox(height: 3),
           _buildStat('energy', const Color(0xFFFFD54F), player.energy,
               player.maxEnergy, 'Energy'),
+          // How long the torch in hand has left to burn.
+          if (gameState.torchLit) ...[
+            const SizedBox(height: 3),
+            _buildStat('torch', const Color(0xFFFF8A3D), player.torchTime,
+                GameState.torchSeconds.toInt(), 'Torch'),
+          ],
         ],
       ),
     );
@@ -189,7 +197,7 @@ class HUDWidget extends StatelessWidget {
     final String detail;
     bool highlight = true;
     if (quest == null) {
-      title = 'Chapter 1 complete';
+      title = 'Chapter ${Quest.chapterCount} complete';
       detail = 'Explore the valley and enjoy it!';
       highlight = false;
     } else if (!gameState.questAccepted) {
@@ -200,10 +208,11 @@ class HUDWidget extends StatelessWidget {
       detail = 'Return to Elder Rowan';
     } else {
       title = quest.title;
-      detail = quest.requires.entries
-          .map((e) =>
-              '${Items.of(e.key).name} ${min(player.count(e.key), e.value)}/${e.value}')
-          .join('   ');
+      detail = quest.meetHint ??
+          quest.requires.entries
+              .map((e) =>
+                  '${Items.of(e.key).name} ${min(player.count(e.key), e.value)}/${e.value}')
+              .join('   ');
       highlight = false;
     }
 
@@ -336,7 +345,7 @@ class HUDWidget extends StatelessWidget {
               padding: const EdgeInsets.all(4),
               child: Text(
                 note ??
-                    'Tap food to eat it, or a campfire to place it in front of you.',
+                    'Tap food to eat it, a torch to light it, or a campfire to place it in front of you.',
                 style: pixelText(14, color: UiColors.ink),
               ),
             ),
@@ -351,6 +360,7 @@ class HUDWidget extends StatelessWidget {
     final hint = switch (info.kind) {
       ItemKind.food => 'Eat',
       ItemKind.placeable => 'Place',
+      ItemKind.light => 'Light',
       _ => null,
     };
 
@@ -399,7 +409,9 @@ class HUDWidget extends StatelessWidget {
   }
 
   Widget _buildCraftingOverlay(BuildContext context) {
-    final recipes = GameState.recipes.entries.toList();
+    final recipes = GameState.recipes.entries
+        .where((e) => gameState.recipeUnlocked(e.key))
+        .toList();
 
     return PixelWindow(
       title: 'Crafting',
@@ -424,7 +436,9 @@ class HUDWidget extends StatelessWidget {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text('${info.name}  (have ${player.count(id)})',
+                      Text(
+                          '${info.name}${(GameState.craftYield[id] ?? 1) > 1 ? ' x${GameState.craftYield[id]}' : ''}'
+                          '  (have ${player.count(id)})',
                           style: pixelText(15, bold: true)),
                       const SizedBox(height: 4),
                       Wrap(
@@ -495,6 +509,16 @@ class HUDWidget extends StatelessWidget {
             ],
           ],
         ),
+      ),
+    );
+  }
+
+  Widget _buildTravelFade() {
+    // Fades to black and back while climbing into or out of the mine.
+    final alpha = (1 - (gameState.travelTimer / 0.4 - 1).abs()).clamp(0.0, 1.0);
+    return Positioned.fill(
+      child: AbsorbPointer(
+        child: ColoredBox(color: Colors.black.withValues(alpha: alpha)),
       ),
     );
   }

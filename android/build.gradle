@@ -22,7 +22,3 @@ rootProject.allprojects {
         mavenCentral()
     }
 }
-
-tasks.named('build') {
-    finalizedBy('androidDependencies')
-}

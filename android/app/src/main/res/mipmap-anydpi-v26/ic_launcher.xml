@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Generated layers: see tool/generate_icons.dart. -->
+<adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
+    <background android:drawable="@drawable/ic_launcher_background_pixels" />
+    <foreground android:drawable="@drawable/ic_launcher_foreground_pixels" />
+    <monochrome android:drawable="@drawable/ic_launcher_foreground_pixels" />
+</adaptive-icon>

@@ -7,6 +7,7 @@ import '../models/player.dart';
 import 'dialog_panel.dart';
 import 'map_overlay.dart';
 import 'pixel_ui.dart';
+import 'sound_toggles.dart';
 
 class HUDWidget extends StatelessWidget {
   final GameState gameState;
@@ -484,6 +485,8 @@ class HUDWidget extends StatelessWidget {
             PixelButton(onPressed: onSave, child: const Text('Save Game')),
             const SizedBox(height: 10),
             PixelButton(onPressed: onMainMenu, child: const Text('Main Menu')),
+            const SizedBox(height: 16),
+            const SoundToggles(),
             if (justSaved) ...[
               const SizedBox(height: 10),
               Text('Game saved',

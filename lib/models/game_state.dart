@@ -101,6 +101,7 @@ class GameState with ChangeNotifier {
   final Map<String, int> _hits = {};
 
   final Random _random = Random();
+  final List<String> _sounds = [];
   bool _disposed = false;
   int _actionMessageId = 0;
   double _autosaveTimer = 0;
@@ -148,6 +149,7 @@ class GameState with ChangeNotifier {
 
   void acceptQuest() {
     questAccepted = true;
+    _sound('accept');
     notifyListeners();
   }
 
@@ -156,8 +158,9 @@ class GameState with ChangeNotifier {
     if (quest == null || !questReady) return;
 
     quest.requires.forEach(player.removeItem);
-    player.addExperience(quest.xp);
+    _xp(quest.xp);
     _applyQuestReward(quest.id);
+    _sound('quest');
     questIndex++;
     // The elder hands out the next task straight away.
     questAccepted = true;
@@ -204,6 +207,7 @@ class GameState with ChangeNotifier {
   void _openDialog(String npcId) {
     dialogNpcId = npcId;
     dialogReply = null;
+    _sound('open');
   }
 
   void closeDialog() {
@@ -212,6 +216,9 @@ class GameState with ChangeNotifier {
     if (_chapterJustCompleted) {
       _chapterJustCompleted = false;
       showChapterComplete = true;
+      _sound('fanfare');
+    } else {
+      _sound('close');
     }
     _updateTarget();
     notifyListeners();
@@ -368,6 +375,7 @@ class GameState with ChangeNotifier {
     player.energy = player.maxEnergy / 2;
     player.position = world.playerSpawn + const Offset(0.5, 0.5);
     _unstickPlayer();
+    _sound('deny');
     _showAction('You fainted and woke up in the village...');
   }
 
@@ -465,6 +473,7 @@ class GameState with ChangeNotifier {
     final t = target;
     if (t == null) {
       _showAction('Nothing to interact with here.');
+      _sound('deny');
       notifyListeners();
       return;
     }
@@ -480,16 +489,19 @@ class GameState with ChangeNotifier {
         _gather(t, world.rocks, 'stone', 2);
         break;
       case 'pick':
+        _sound('pick');
         world.pickFruit(t.key!);
         _gain('berry', 2, t.tile);
-        player.addExperience(2);
+        _xp(2);
         break;
       case 'pick_apple':
+        _sound('pick');
         world.pickFruit(t.key!);
         _gain('apple', 1 + _random.nextInt(2), t.tile);
-        player.addExperience(2);
+        _xp(2);
         break;
       case 'search':
+        _sound('pick');
         world.plants.remove(t.key);
         if (_random.nextDouble() < 0.4) {
           _gain('seeds', 1, t.tile);
@@ -509,33 +521,40 @@ class GameState with ChangeNotifier {
       case 'plant':
         if (player.count('seeds') == 0) {
           _showAction('You have no seeds. Search the tall grass to find some.');
+          _sound('deny');
         } else {
           player.removeItem('seeds', 1);
           world.crops[t.key!] = Crop();
+          _sound('plant');
           _float('Planted', t.tile, Colors.lightGreenAccent);
         }
         break;
       case 'water':
         world.crops[t.key!]!.watered = true;
+        _sound('water');
         _float('Watered', t.tile, Colors.lightBlueAccent);
         break;
       case 'growing':
         _showAction('It needs time to grow. Water it again once it has grown.');
         break;
       case 'harvest':
+        _sound('pick');
         world.crops.remove(t.key);
         _gain('carrot', 2, t.tile);
         _gain('seeds', 1 + _random.nextInt(2), t.tile, below: true);
-        player.addExperience(5);
+        _xp(5);
         break;
       case 'bridge_site':
         _showAction('The bridge is broken. Elder Rowan wants to rebuild it.');
+        _sound('open');
         break;
       case 'cave':
         _showAction('A cold draft blows out of the dark cave. Better not go in without a light.');
+        _sound('open');
         break;
       case 'watch':
         _showAction(_animalLine(t.key!));
+        _sound('open');
         break;
     }
     _updateTarget();
@@ -545,6 +564,7 @@ class GameState with ChangeNotifier {
   /// Chopping and mining take three hits; the last one yields [amount].
   void _gather(Interaction t, Map<String, Offset> source, String item, int amount) {
     if (!_useEnergy(1.5)) return;
+    _sound(item == 'wood' ? 'chop' : 'mine');
     final key = t.key!;
     shakeKey = key;
     shakeTime = 0.25;
@@ -556,36 +576,42 @@ class GameState with ChangeNotifier {
     _hits.remove(key);
     source.remove(key);
     _gain(item, amount, t.tile);
-    player.addExperience(5);
+    _xp(5);
   }
 
   void _fish(Interaction t) {
     if (player.count('fishing_rod') == 0) {
       _showAction('You need a fishing rod. Craft one from sticks and wood.');
+      _sound('deny');
       return;
     }
     if (!_useEnergy(1)) return;
+    _sound('splash');
     if (_random.nextDouble() < 0.35) {
       _gain('fish', 1, t.tile);
-      player.addExperience(3);
+      _xp(3);
     } else {
       _float('Nothing bites...', t.tile, Colors.white70);
+      _sound('nibble');
     }
   }
 
   void _cook(Interaction t) {
     if (player.count('fish') == 0) {
       _showAction('Catch some fish, then cook them here. You can also sleep by the fire.');
+      _sound('deny');
       return;
     }
     player.removeItem('fish', 1);
+    _sound('sizzle');
     _gain('cooked_fish', 1, t.tile);
-    player.addExperience(2);
+    _xp(2);
   }
 
   bool _useEnergy(double amount) {
     if (player.energy < 5) {
       _showAction('Too tired to work. Rest by a fire or sleep in your bed.');
+      _sound('deny');
       return false;
     }
     player.energy = max(0, player.energy - amount);
@@ -600,6 +626,7 @@ class GameState with ChangeNotifier {
 
   void _gain(String item, int amount, Point<int> tile, {bool below = false}) {
     player.addItem(item, amount);
+    _sound('pickup');
     final info = Items.of(item);
     _float('+$amount ${info.name}', tile, info.color, below: below);
   }
@@ -645,8 +672,10 @@ class GameState with ChangeNotifier {
     if (isMenuOpen) return;
     if (!canSleepHere) {
       _showAction('You can only sleep in your bed or next to a campfire.');
+      _sound('deny');
     } else {
       confirmSleep = true;
+      _sound('open');
       _updateTarget();
     }
     notifyListeners();
@@ -654,6 +683,7 @@ class GameState with ChangeNotifier {
 
   void cancelSleep() {
     confirmSleep = false;
+    _sound('close');
     _updateTarget();
     notifyListeners();
   }
@@ -661,6 +691,7 @@ class GameState with ChangeNotifier {
   void sleep() {
     confirmSleep = false;
     sleepTimer = 2.0;
+    _sound('sleep');
     _sleepApplied = false;
     notifyListeners();
   }
@@ -694,10 +725,12 @@ class GameState with ChangeNotifier {
     if (info.isFood) {
       player.consumeFood(id, info.hunger, info.health);
       inventoryNote = 'You ate ${info.name.toLowerCase()}. +${info.hunger} hunger';
+      _sound('eat');
     } else if (id == 'campfire') {
       _placeCampfire();
     } else {
       inventoryNote = '${info.name}: ${info.description}';
+      _sound('open');
     }
     notifyListeners();
   }
@@ -707,10 +740,12 @@ class GameState with ChangeNotifier {
     final tile = _facingTile();
     if (!world.canPlaceCampfire(tile.x, tile.y, from: _playerTile) || _hitboxOverlaps(tile)) {
       _showAction("You can't place a campfire there. Face an open spot that isn't in anyone's way.");
+      _sound('deny');
       return;
     }
     player.removeItem('campfire', 1);
     world.placeCampfire(tile.x, tile.y);
+    _sound('place');
     _showAction('Campfire placed. Cook fish and sleep beside it.');
     _updateTarget();
   }
@@ -744,7 +779,8 @@ class GameState with ChangeNotifier {
     if (recipe == null || !canCraft(id)) return;
     recipe.forEach(player.removeItem);
     player.addItem(id, 1);
-    player.addExperience(_craftXp[id] ?? 0);
+    _sound('craft');
+    _xp(_craftXp[id] ?? 0);
     notifyListeners();
   }
 
@@ -754,6 +790,7 @@ class GameState with ChangeNotifier {
   void toggleInventory() {
     if (isSleeping) return;
     showInventory = !showInventory;
+    _sound(showInventory ? 'open' : 'close');
     showCrafting = false;
     showMap = false;
     inventoryNote = null;
@@ -764,6 +801,7 @@ class GameState with ChangeNotifier {
   void toggleCrafting() {
     if (isSleeping) return;
     showCrafting = !showCrafting;
+    _sound(showCrafting ? 'open' : 'close');
     showInventory = false;
     showMap = false;
     _updateTarget();
@@ -773,6 +811,7 @@ class GameState with ChangeNotifier {
   void toggleMap() {
     if (isSleeping) return;
     showMap = !showMap;
+    _sound(showMap ? 'open' : 'close');
     showInventory = false;
     showCrafting = false;
     _updateTarget();
@@ -782,6 +821,7 @@ class GameState with ChangeNotifier {
   void togglePause() {
     if (isSleeping) return;
     isPaused = !isPaused;
+    _sound(isPaused ? 'open' : 'close');
     _updateTarget();
     notifyListeners();
   }
@@ -806,6 +846,26 @@ class GameState with ChangeNotifier {
 
   // ---------------------------------------------------------------------------
   // Saving
+
+  /// Sounds that happened since the last call, named after the files in
+  /// assets/audio, for the screen to play.
+  List<String> takeSounds() {
+    final sounds = List.of(_sounds);
+    _sounds.clear();
+    return sounds;
+  }
+
+  void _sound(String name) => _sounds.add(name);
+
+  /// Adds experience, and celebrates reaching a new level.
+  void _xp(int amount) {
+    final level = player.level;
+    player.addExperience(amount);
+    if (player.level > level) {
+      _sound('levelup');
+      _float('Level up!', _playerTile, const Color(0xFFFFD54F));
+    }
+  }
 
   /// Whether something worth saving happened since the last call.
   bool takeSaveRequest() {

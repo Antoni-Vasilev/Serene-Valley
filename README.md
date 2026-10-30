@@ -29,6 +29,9 @@ way back to him.
 - **Crafting System**: Create tools and items from gathered resources
 - **Farming**: Plant seeds, water them and harvest carrots
 - **Saving**: The game saves automatically and can be continued from the title screen
+- **Music and Sound**: Gentle 8-bit tunes for day and night, birds and crickets, the river and crackling fires
+  nearby, and sounds for everything you do. Music and sounds can be switched off from the title screen or the
+  pause menu
 
 ### Peaceful Gameplay
 - **Resource Gathering**: Chop trees, mine rocks, fish, pick berries and apples, search tall grass for seeds
@@ -140,6 +143,8 @@ lib/
 │   └── items.dart          # Item names, icons and food values
 ├── services/
 │   └── save_service.dart   # Saving and loading the game
+├── audio/
+│   └── sound.dart          # Music, ambience and sound effects
 ├── graphics/
 │   ├── textures.dart       # Every texture, generated once at startup
 │   ├── pixel_canvas.dart   # Small pixel buffer for drawing pixel art in code
@@ -148,6 +153,7 @@ lib/
 │   ├── object_art.dart     # Trees, rocks, plants, fires, houses and more
 │   ├── character_art.dart  # Villagers, the player and animals
 │   ├── ui_art.dart         # Icons, frames, buttons and the title scene
+│   ├── icon_art.dart       # The app icon
 │   └── ui_textures.dart    # Interface images, generated once at startup
 ├── screens/
 │   ├── title_screen.dart   # Title screen with Continue / New game
@@ -158,7 +164,8 @@ lib/
 │   ├── hud_widget.dart     # HUD, inventory, crafting and pause menus
 │   ├── dialog_panel.dart   # Conversations, sleep prompt, chapter end
 │   ├── map_overlay.dart    # World map
-│   └── pixel_ui.dart       # Pixel-art panels, buttons, icons and bars
+│   ├── pixel_ui.dart       # Pixel-art panels, buttons, icons and bars
+│   └── sound_toggles.dart  # Music and sound on/off buttons
 └── utils/
     └── helpers.dart        # Helper functions
 ```
@@ -177,6 +184,24 @@ phone. Colours come from the ramps in `palette.dart`; characters are drawn from 
 The interface is pixel art too: wooden and parchment frames, buttons and icons are drawn in `ui_art.dart` and
 sliced into nine so their borders stay sharp at any size. The reusable widgets (`PixelPanel`, `PixelButton`,
 `PixelIcon`, `PixelBar`, `PixelWindow`) live in `widgets/pixel_ui.dart`. Text uses the Pixelify Sans font.
+
+### Sound
+All music and sound is synthesised by `tool/generate_audio.dart` from notes and recipes written in code, like
+an 8-bit console would, and saved as WAV files in `assets/audio`. After changing it, regenerate with:
+
+```
+dart run tool/generate_audio.dart
+```
+
+The script also checks that every note of the melodies sounds at the right pitch.
+
+### App Icon
+The launcher icon is pixel art from `lib/graphics/icon_art.dart`. After changing it, regenerate the Android
+icons with:
+
+```
+flutter test tool/generate_icons.dart
+```
 
 ### Adding New Features
 1. Add new tile types in `world.dart`, their texture in `terrain_art.dart` and their map colour in `tile_widget.dart`

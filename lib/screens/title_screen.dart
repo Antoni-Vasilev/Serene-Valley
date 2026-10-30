@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
+import '../audio/sound.dart';
 import '../graphics/textures.dart';
 import '../graphics/ui_textures.dart';
 import '../models/game_state.dart';
 import '../services/save_service.dart';
 import '../widgets/pixel_ui.dart';
+import '../widgets/sound_toggles.dart';
 import 'game_screen.dart';
 
 class TitleScreen extends StatefulWidget {
@@ -23,6 +25,7 @@ class _TitleScreenState extends State<TitleScreen> {
   void initState() {
     super.initState();
     _refresh();
+    Sound.instance.setScene(ambience: false);
     // Draw the game's textures now, so starting to play doesn't stutter.
     WidgetsBinding.instance.addPostFrameCallback((_) => Textures.instance);
   }
@@ -37,6 +40,7 @@ class _TitleScreenState extends State<TitleScreen> {
   }
 
   Future<void> _continue() async {
+    Sound.instance.play('open');
     setState(() => _loading = true);
     final state = await widget.saveService.load();
     if (!mounted) return;
@@ -48,6 +52,7 @@ class _TitleScreenState extends State<TitleScreen> {
   }
 
   Future<void> _newGame() async {
+    Sound.instance.play('open');
     if (_summary != null) {
       final confirmed = await showDialog<bool>(
         context: context,
@@ -181,6 +186,8 @@ class _TitleScreenState extends State<TitleScreen> {
                         label: 'New game',
                         onPressed: _newGame,
                       ),
+                      const SizedBox(height: 20),
+                      const SoundToggles(),
                     ],
                   ],
                 ),

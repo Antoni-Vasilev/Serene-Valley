@@ -1,4 +1,7 @@
+import 'dart:math';
+
 import 'package:flutter/material.dart';
+import '../audio/sound.dart';
 import '../graphics/textures.dart';
 import '../graphics/ui_textures.dart';
 import '../models/game_state.dart';
@@ -31,6 +34,12 @@ class _DialogPanelState extends State<DialogPanel> {
     final quest = gameState.currentQuest;
     final replying = gameState.dialogReply != null;
     final text = gameState.dialogText;
+    // Each villager has their own voice for the letters as they appear.
+    final voice = switch (npc.id) {
+      Npc.elderId => 'blip_low',
+      Npc.tomId => 'blip_mid',
+      _ => 'blip_high',
+    };
 
     final List<Widget> buttons;
     if (replying) {
@@ -94,7 +103,7 @@ class _DialogPanelState extends State<DialogPanel> {
                       onTap: () => setState(() => _skipped = text),
                       child: ConstrainedBox(
                         constraints: const BoxConstraints(maxHeight: 210),
-                        child: SingleChildScrollView(child: _TypedText(text, instant: _skipped == text)),
+                        child: SingleChildScrollView(child: _TypedText(text, voice: voice, instant: _skipped == text)),
                       ),
                     ),
                     if (isElder && quest != null) ...[
@@ -130,31 +139,79 @@ class _DialogPanelState extends State<DialogPanel> {
   }
 }
 
-/// Text that writes itself out letter by letter, like a story being told.
-/// The full text is laid out from the start so the box doesn't grow.
-class _TypedText extends StatelessWidget {
+/// Text that writes itself out letter by letter, like a story being told,
+/// with a soft blip in the speaker's [voice]. The full text is laid out from
+/// the start so the box doesn't grow.
+class _TypedText extends StatefulWidget {
   final String text;
+  final String voice;
   final bool instant;
 
-  const _TypedText(this.text, {required this.instant});
+  const _TypedText(this.text, {required this.voice, required this.instant});
+
+  @override
+  State<_TypedText> createState() => _TypedTextState();
+}
+
+class _TypedTextState extends State<_TypedText> with SingleTickerProviderStateMixin {
+  late final AnimationController _controller = AnimationController(vsync: this)..addListener(_tick);
+  int _shown = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _start();
+  }
+
+  void _start() {
+    _shown = 0;
+    _controller.duration = Duration(milliseconds: 18 * max(1, widget.text.length));
+    if (widget.instant) {
+      _controller.value = 1;
+    } else {
+      _controller.forward(from: 0);
+    }
+  }
+
+  void _tick() {
+    final shown = (widget.text.length * _controller.value).floor();
+    if (shown == _shown) return;
+    // A blip every other letter, skipping spaces.
+    if (shown ~/ 2 != _shown ~/ 2 && shown < widget.text.length && widget.text[shown] != ' ') {
+      Sound.instance.play(widget.voice, volume: 0.5);
+    }
+    setState(() => _shown = shown);
+  }
+
+  @override
+  void didUpdateWidget(covariant _TypedText oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.text != widget.text) {
+      _start();
+    } else if (widget.instant && !oldWidget.instant) {
+      _controller.stop();
+    }
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
     final style = pixelText(16, color: UiColors.ink);
-    if (instant) return Text(text, style: style);
-    return TweenAnimationBuilder<int>(
-      key: ValueKey(text),
-      tween: IntTween(begin: 0, end: text.length),
-      duration: Duration(milliseconds: 18 * text.length),
-      builder: (context, shown, _) => Text.rich(
-        TextSpan(
-          children: [
-            TextSpan(text: text.substring(0, shown)),
-            TextSpan(text: text.substring(shown), style: const TextStyle(color: Colors.transparent)),
-          ],
-        ),
-        style: style,
+    final text = widget.text;
+    final shown = widget.instant ? text.length : min(_shown, text.length);
+    return Text.rich(
+      TextSpan(
+        children: [
+          TextSpan(text: text.substring(0, shown)),
+          TextSpan(text: text.substring(shown), style: const TextStyle(color: Colors.transparent)),
+        ],
       ),
+      style: style,
     );
   }
 }

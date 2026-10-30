@@ -1,8 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:flutter/services.dart';
+import 'dart:math';
+
+import '../audio/sound.dart';
 import '../graphics/ui_textures.dart';
 import '../models/game_state.dart';
+import '../models/player.dart';
 import '../services/save_service.dart';
 import '../widgets/hud_widget.dart';
 import '../widgets/pixel_ui.dart';
@@ -29,6 +33,11 @@ class _GameScreenState extends State<GameScreen> with SingleTickerProviderStateM
   // Briefly true after saving from the pause menu.
   bool _justSaved = false;
 
+  // Footsteps and the sounds of the surroundings.
+  Offset _lastPosition = Offset.zero;
+  double _stepTimer = 0;
+  double _sceneTimer = 0;
+
   static const double tileSize = 16.0;
 
   GameState get gameState => widget.gameState;
@@ -49,6 +58,8 @@ class _GameScreenState extends State<GameScreen> with SingleTickerProviderStateM
     _ticker.dispose();
     HardwareKeyboard.instance.removeHandler(_handleKeyEvent);
     WidgetsBinding.instance.removeObserver(this);
+    // Back to the title screen's music.
+    Sound.instance.setScene(ambience: false);
     gameState.dispose();
     super.dispose();
   }
@@ -69,6 +80,50 @@ class _GameScreenState extends State<GameScreen> with SingleTickerProviderStateM
     gameState.moveInput = _joystickInput != Offset.zero ? _joystickInput : _keyboardInput();
     gameState.update(dt);
     if (gameState.takeSaveRequest()) _save();
+    // Each sound at most once a frame, even if it happened twice.
+    for (final name in gameState.takeSounds().toSet()) {
+      Sound.instance.play(name);
+    }
+    _updateSound(dt);
+  }
+
+  void _updateSound(double dt) {
+    final player = gameState.player;
+    final world = gameState.world;
+    final moved = (player.position - _lastPosition).distance > 0.001;
+    _lastPosition = player.position;
+    if (moved && !gameState.isMenuOpen) {
+      _stepTimer -= dt;
+      if (_stepTimer <= 0) {
+        _stepTimer = player.speed < Player.baseSpeed ? 0.42 : 0.3;
+        final ground = world.getTileAt(player.position.dx.floor(), player.position.dy.floor());
+        Sound.instance.play(ground == 'wood_floor' || ground == 'bridge' ? 'step_wood' : 'step', volume: 0.6);
+      }
+    } else {
+      _stepTimer = 0.08;
+    }
+
+    // The surroundings change slowly, so a few updates a second will do.
+    _sceneTimer -= dt;
+    if (_sceneTimer > 0) return;
+    _sceneTimer = 0.25;
+    final x = player.position.dx.floor();
+    final y = player.position.dy.floor();
+    var water = double.infinity;
+    for (var dy = -5; dy <= 5; dy++) {
+      for (var dx = -5; dx <= 5; dx++) {
+        if (world.getTileAt(x + dx, y + dy) == 'water') water = min(water, sqrt(dx * dx + dy * dy));
+      }
+    }
+    var fire = double.infinity;
+    for (final f in world.fires) {
+      fire = min(fire, (f + const Offset(0.5, 0.5) - player.position).distance);
+    }
+    Sound.instance.setScene(
+      darkness: (1 - world.getLightLevel()) / 0.85,
+      water: Sound.nearness(water, 6),
+      fire: Sound.nearness(fire, 6),
+    );
   }
 
   bool _handleKeyEvent(KeyEvent event) {

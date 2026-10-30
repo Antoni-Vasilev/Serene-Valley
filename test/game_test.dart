@@ -308,6 +308,43 @@ void main() {
     });
   });
 
+  group('Sounds', () {
+    test('actions and menus make sounds for the screen to play', () {
+      final state = GameState(worldSeed: 1);
+      state.takeSounds();
+
+      state.toggleInventory();
+      state.toggleInventory();
+      expect(state.takeSounds(), ['open', 'close']);
+
+      state.interact();
+      state.acceptQuest();
+      state.closeDialog();
+      expect(state.takeSounds(), ['open', 'accept', 'close']);
+
+      state.player.addItem('wood', 10);
+      state.interact();
+      state.handInQuest();
+      expect(state.takeSounds(), ['open', 'quest']);
+      expect(state.takeSounds(), isEmpty);
+    });
+
+    test('reaching a new level is celebrated', () {
+      final state = GameState(worldSeed: 1);
+      state.takeSounds();
+      state.player.addItem('wood', 100);
+      for (var i = 0; i < 12; i++) {
+        state.craftItem('stick');
+      }
+      expect(state.player.level, 1);
+      state.player.experience = state.player.experienceToNextLevel - 1;
+      state.craftItem('stick');
+      expect(state.player.level, 2);
+      expect(state.takeSounds(), contains('levelup'));
+      expect(state.floatingTexts.map((t) => t.text), contains('Level up!'));
+    });
+  });
+
   group('Items', () {
     test('crafting needs the ingredients and consumes them', () {
       final state = GameState(worldSeed: 5);

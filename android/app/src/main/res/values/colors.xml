@@ -1,4 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <color name="launch_background">#1a1a2e</color>
+    <!-- The evening sky at the top of the app icon. -->
+    <color name="launch_background">#2B3A67</color>
 </resources>

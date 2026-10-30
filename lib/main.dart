@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'audio/sound.dart';
 import 'screens/title_screen.dart';
 import 'services/save_service.dart';
 import 'widgets/pixel_ui.dart';
@@ -8,6 +9,8 @@ void main() {
   WidgetsFlutterBinding.ensureInitialized();
   // Full-screen game: hide the status and navigation bars until swiped in.
   SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
+  // Loads in the background; sounds start as soon as they're ready.
+  Sound.instance.init();
   runApp(SereneValleyApp(saveService: SaveService()));
 }
 

@@ -110,6 +110,42 @@ class World {
 
   Npc? npc(String id) => npcs.where((n) => n.id == id).firstOrNull;
 
+  List<Rect>? _houses;
+
+  /// Every house as a rectangle of tiles, walls included. Houses never change,
+  /// so they are found once from the tiles.
+  List<Rect> get houses => _houses ??= _findHouses();
+
+  List<Rect> _findHouses() {
+    bool isHouse(int x, int y) {
+      final tile = getTileAt(x, y);
+      return tile == 'wood_wall' || tile == 'wood_floor';
+    }
+
+    final seen = <Point<int>>{};
+    final result = <Rect>[];
+    for (int y = 0; y < height; y++) {
+      for (int x = 0; x < width; x++) {
+        if (!isHouse(x, y) || seen.contains(Point(x, y))) continue;
+        var left = x, right = x, top = y, bottom = y;
+        final queue = Queue<Point<int>>()..add(Point(x, y));
+        seen.add(Point(x, y));
+        while (queue.isNotEmpty) {
+          final p = queue.removeFirst();
+          left = min(left, p.x);
+          right = max(right, p.x);
+          top = min(top, p.y);
+          bottom = max(bottom, p.y);
+          for (final n in [Point(p.x + 1, p.y), Point(p.x - 1, p.y), Point(p.x, p.y + 1), Point(p.x, p.y - 1)]) {
+            if (isHouse(n.x, n.y) && seen.add(n)) queue.add(n);
+          }
+        }
+        result.add(Rect.fromLTRB(left.toDouble(), top.toDouble(), right + 1.0, bottom + 1.0));
+      }
+    }
+    return result;
+  }
+
   static String cropKey(int x, int y) => '${x}_$y';
 
   // ---------------------------------------------------------------------------
@@ -146,6 +182,7 @@ class World {
     farmUnlocked = false;
     _mountainEdge = [];
     _solid = {};
+    _houses = null;
 
     _generateTerrain();
     _generateForests();
@@ -170,9 +207,9 @@ class World {
       final cy = random.nextInt(height);
       final r = 1 + random.nextInt(3);
       final type = random.nextDouble() < 0.6 ? 'dirt' : 'sand';
-      for (int y = cy - r; y <= cy + r; y++) {
-        for (int x = cx - r; x <= cx + r; x++) {
-          if (_inBounds(x, y) && _dist(x, y, cx, cy) <= r && random.nextDouble() < 0.75) {
+      for (int y = cy - r - 1; y <= cy + r + 1; y++) {
+        for (int x = cx - r - 1; x <= cx + r + 1; x++) {
+          if (_inBounds(x, y) && _dist(x, y, cx, cy) <= r + random.nextDouble() * 0.8) {
             tiles[y][x] = type;
           }
         }
@@ -194,6 +231,27 @@ class World {
               random.nextDouble() < 0.85) {
             tiles[y][x] = 'forest_grass';
           }
+        }
+      }
+    }
+
+    // Smooth the speckles into solid patches of forest floor.
+    for (var pass = 0; pass < 2; pass++) {
+      final before = [for (final row in tiles) List.of(row)];
+      for (int y = 0; y < height; y++) {
+        for (int x = 0; x < width; x++) {
+          final tile = before[y][x];
+          if (tile != 'grass' && tile != 'forest_grass') continue;
+          var forest = 0;
+          for (int dy = -1; dy <= 1; dy++) {
+            for (int dx = -1; dx <= 1; dx++) {
+              if ((dx != 0 || dy != 0) && _inBounds(x + dx, y + dy) && before[y + dy][x + dx] == 'forest_grass') {
+                forest++;
+              }
+            }
+          }
+          if (tile == 'forest_grass' && forest < 3) tiles[y][x] = 'grass';
+          if (tile == 'grass' && forest >= 5) tiles[y][x] = 'forest_grass';
         }
       }
     }
@@ -256,7 +314,8 @@ class World {
 
       for (int y = centerY - size; y <= centerY + size; y++) {
         for (int x = centerX - size; x <= centerX + size; x++) {
-          if (!_inBounds(x, y) || _reserved[y][x] || tiles[y][x] == 'water') continue;
+          // Never spill over to the village side where the river bends.
+          if (!_inBounds(x, y) || _reserved[y][x] || x <= _riverEast[y] + 1 || tiles[y][x] == 'water') continue;
           final d = _dist(x, y, centerX, centerY) + random.nextDouble() * 0.8;
           if (d < size * 0.55) {
             tiles[y][x] = 'stone';
@@ -292,8 +351,15 @@ class World {
     final vx = villageCenter.dx.toInt();
     final vy = villageCenter.dy.toInt();
 
-    // Clear the village grounds.
-    _fill(vx - 10, vy - 8, vx + 9, vy + 9, 'grass');
+    // Clear the village grounds in a rough oval around the buildings.
+    for (int y = vy - 14; y <= vy + 15; y++) {
+      for (int x = vx - 15; x <= vx + 15; x++) {
+        if (!_inBounds(x, y) || tiles[y][x] == 'water') continue;
+        final dx = (x - vx + 0.5) / 14;
+        final dy = (y - vy - 0.5) / 13;
+        if (dx * dx + dy * dy < 1 + (random.nextDouble() - 0.5) * 0.25) tiles[y][x] = 'grass';
+      }
+    }
 
     // Plaza with the old fire pit in the middle.
     _fill(vx - 3, vy - 2, vx + 3, vy + 2, 'path');
@@ -302,7 +368,7 @@ class World {
     // The player's house, Mira's house and the elder's house.
     _buildHouse(vx - 5, vy - 7, vx - 1, vy - 3, Point(vx - 3, vy - 3));
     _buildHouse(vx + 1, vy - 7, vx + 5, vy - 3, Point(vx + 3, vy - 3));
-    _buildHouse(vx - 9, vy - 1, vx - 5, vy + 3, Point(vx - 5, vy + 1));
+    _buildHouse(vx - 9, vy - 1, vx - 5, vy + 3, Point(vx - 7, vy + 3));
     bed = Offset(vx - 4.0, vy - 6.0);
 
     // Road east to the broken bridge, continuing on the far bank.
@@ -404,7 +470,9 @@ class World {
   }
 
   void _placeRock(int x, int y) {
-    if (!_inBounds(x, y) || _reserved[y][x] || !_isNaturalGround(x, y) || _occupied(x, y)) return;
+    if (!_inBounds(x, y) || x <= _riverEast[y] || _reserved[y][x] || !_isNaturalGround(x, y) || _occupied(x, y)) {
+      return;
+    }
     rocks['rock_${x}_$y'] = Offset(x.toDouble(), y.toDouble());
   }
 

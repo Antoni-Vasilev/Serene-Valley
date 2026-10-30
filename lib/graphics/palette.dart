@@ -1,0 +1,29 @@
+/// Colour ramps for the game's pixel art, each running from dark to light.
+class Palette {
+  static const grass = [0xFF3B6E2B, 0xFF4F8A35, 0xFF68A544, 0xFF82BE52, 0xFFA2D669];
+  static const forest = [0xFF23502B, 0xFF2D6233, 0xFF3A773B, 0xFF4B8D45, 0xFF63A653];
+  static const dirt = [0xFF5A3A22, 0xFF6E4A2C, 0xFF875C36, 0xFFA07045, 0xFFB98A5C];
+  static const sand = [0xFFB89A5E, 0xFFCDB074, 0xFFE0C78C, 0xFFEDD7A4, 0xFFF7E8C2];
+  static const cobble = [0xFF7D6A50, 0xFF98825F, 0xFFB29B76, 0xFFC8B28C, 0xFFDCC8A4];
+  static const stone = [0xFF45454F, 0xFF5A5A65, 0xFF72727C, 0xFF8C8C95, 0xFFAAAAB2];
+  static const water = [0xFF1F4E8C, 0xFF285F9F, 0xFF3371B5, 0xFF4686C8, 0xFF6BA6DD];
+  static const foam = 0xFFD5ECFA;
+  static const wood = [0xFF5E3920, 0xFF7A4B2A, 0xFF966037, 0xFFB07646, 0xFFC98F5A];
+  static const logs = [0xFF43261A, 0xFF5C3522, 0xFF77462B, 0xFF915734, 0xFFA96B42];
+  static const soil = [0xFF3F2616, 0xFF52331D, 0xFF684227, 0xFF7E5232];
+  static const wetSoil = [0xFF26170D, 0xFF332013, 0xFF432B1A, 0xFF553722];
+  static const leaves = [0xFF1D4523, 0xFF29632E, 0xFF388236, 0xFF4FA243, 0xFF74C25A];
+  static const leavesOutline = 0xFF132E17;
+  static const pine = [0xFF143A2C, 0xFF1D4F3D, 0xFF27664D, 0xFF35805E, 0xFF4E9E74];
+  static const pineOutline = 0xFF0D261C;
+  static const bark = [0xFF3A2213, 0xFF52311D, 0xFF6B4228, 0xFF855435];
+  static const rock = [0xFF3D3D46, 0xFF55555E, 0xFF6E6E77, 0xFF8A8A93, 0xFFADADB5];
+  static const rockOutline = 0xFF26262C;
+  static const roof = [0xFF5A2320, 0xFF7A2F28, 0xFF9A4133, 0xFFB85840, 0xFFD27756];
+  static const fire = [0xFFB3261E, 0xFFE2531F, 0xFFF59A23, 0xFFFFD34D, 0xFFFFF4B8];
+  static const berry = [0xFF8A1A22, 0xFFD0303A, 0xFFFF8A8A];
+  static const apple = [0xFF9C1F1A, 0xFFE0402F, 0xFFFF9A80];
+  static const carrot = [0xFFB5520E, 0xFFEF7D1A, 0xFFFFB24D];
+  static const outline = 0xFF2A1E18;
+  static const shadow = 0x40000000;
+}

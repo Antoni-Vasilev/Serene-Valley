@@ -1,5 +1,6 @@
 import 'dart:math';
 import 'package:flutter/material.dart';
+import '../graphics/textures.dart';
 import '../models/game_state.dart';
 import '../services/save_service.dart';
 import 'game_screen.dart';
@@ -21,6 +22,8 @@ class _TitleScreenState extends State<TitleScreen> {
   void initState() {
     super.initState();
     _refresh();
+    // Draw the game's textures now, so starting to play doesn't stutter.
+    WidgetsBinding.instance.addPostFrameCallback((_) => Textures.instance);
   }
 
   Future<void> _refresh() async {

@@ -15,6 +15,14 @@ class CharacterLook {
     this.legs = const Color(0xFF5D4037),
     this.beard,
   });
+
+  /// The player: brown hair, green shirt and blue trousers.
+  static const player = CharacterLook(
+    body: Color(0xFF4CAF50),
+    skin: Color(0xFFF2C29A),
+    hat: Color(0xFF7A4A2A),
+    legs: Color(0xFF3F6FB5),
+  );
 }
 
 class Npc {

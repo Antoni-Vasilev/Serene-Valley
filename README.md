@@ -140,13 +140,19 @@ lib/
 │   └── items.dart          # Item names, icons and food values
 ├── services/
 │   └── save_service.dart   # Saving and loading the game
+├── graphics/
+│   ├── textures.dart       # Every texture, generated once at startup
+│   ├── pixel_canvas.dart   # Small pixel buffer for drawing pixel art in code
+│   ├── palette.dart        # Colour ramps shared by all the art
+│   ├── terrain_art.dart    # Tiles and the overlays that blend them together
+│   ├── object_art.dart     # Trees, rocks, plants, fires, houses and more
+│   └── character_art.dart  # Villagers, the player and animals
 ├── screens/
 │   ├── title_screen.dart   # Title screen with Continue / New game
 │   └── game_screen.dart    # Game loop, input and touch controls
 ├── widgets/
 │   ├── world_widget.dart   # World rendering (CustomPainter)
-│   ├── player_widget.dart  # Player and villager sprites
-│   ├── tile_widget.dart    # Tile colours
+│   ├── tile_widget.dart    # Tile colours for the map
 │   ├── hud_widget.dart     # HUD, inventory, crafting and pause menus
 │   ├── dialog_panel.dart   # Conversations, sleep prompt, chapter end
 │   ├── map_overlay.dart    # World map
@@ -159,8 +165,14 @@ lib/
 Run `flutter test`. The tests cover world generation, the whole quest chain, survival mechanics, saving and
 the main screens on small and large phones.
 
+### Graphics
+All the pixel art is drawn in code: no image files are needed. Textures are 16 pixels per tile and are drawn
+scaled up without smoothing, at a whole number of screen pixels per texture pixel, so they stay crisp on any
+phone. Colours come from the ramps in `palette.dart`; characters are drawn from small text templates in
+`character_art.dart`, where each letter stands for a colour.
+
 ### Adding New Features
-1. Add new tile types in `world.dart` and their colours in `tile_widget.dart`
+1. Add new tile types in `world.dart`, their texture in `terrain_art.dart` and their map colour in `tile_widget.dart`
 2. Add new items in `items.dart` and recipes in `GameState.recipes`
 3. Add new quests to `Quest.chapter` and their rewards in `GameState._applyQuestReward`
 

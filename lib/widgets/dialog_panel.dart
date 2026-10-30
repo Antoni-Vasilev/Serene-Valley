@@ -3,7 +3,7 @@ import '../models/game_state.dart';
 import '../models/items.dart';
 import '../models/npc.dart';
 import '../models/quest.dart';
-import 'player_widget.dart';
+import '../graphics/textures.dart';
 
 const _panelColor = Color(0xFF2B2118);
 const _accent = Color(0xFFFFD54F);
@@ -199,9 +199,13 @@ class _PortraitPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     // Zoom in on the head and shoulders.
-    canvas.scale(size.width * 1.4);
-    canvas.translate(-0.14, -0.02);
-    CharacterSprite.paint(canvas, Offset.zero, 'down', 0, look: look);
+    final image = Textures.instance.character(look)['down']!.first;
+    canvas.drawImageRect(
+      image,
+      const Rect.fromLTWH(2, 0, 12, 12),
+      Rect.fromLTWH(4, 4, size.width - 8, size.height - 8),
+      Paint()..filterQuality = FilterQuality.none,
+    );
   }
 
   @override

@@ -1,16 +1,19 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'screens/game_screen.dart';
+import 'screens/title_screen.dart';
+import 'services/save_service.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
   // Full-screen game: hide the status and navigation bars until swiped in.
   SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
-  runApp(const SereneValleyApp());
+  runApp(SereneValleyApp(saveService: SaveService()));
 }
 
 class SereneValleyApp extends StatelessWidget {
-  const SereneValleyApp({super.key});
+  final SaveService saveService;
+
+  const SereneValleyApp({super.key, required this.saveService});
 
   @override
   Widget build(BuildContext context) {
@@ -24,7 +27,7 @@ class SereneValleyApp extends StatelessWidget {
         ),
         useMaterial3: true,
       ),
-      home: const GameScreen(),
+      home: TitleScreen(saveService: saveService),
     );
   }
 }

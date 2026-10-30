@@ -19,7 +19,16 @@ class TileColors {
       case 'wood_floor':
         return const Color(0xFFCD853F);
       case 'wood_wall':
-        return const Color(0xFFA0522D);
+        return const Color(0xFF8B4A2B);
+      case 'path':
+        return const Color(0xFFCDB389);
+      case 'bridge':
+        return const Color(0xFFA0703F);
+      case 'farmland':
+        return const Color(0xFF7A4E2A);
+      case 'fence':
+        // Fences stand on grass.
+        return const Color(0xFF7CC243);
       case 'void':
         return Colors.black;
       default:
@@ -29,8 +38,10 @@ class TileColors {
 
   /// Deterministic per-tile shade so large fields don't look flat.
   static Color shaded(String tileType, int x, int y) {
-    final hash = ((x * 73856093) ^ (y * 19349663)) & 0xFF;
-    final amount = (hash / 255.0) * 0.08;
+    final amount = hash(x, y) * 0.08;
     return Color.lerp(of(tileType), Colors.black, amount)!;
   }
+
+  /// A stable pseudo-random value in 0..1 for a tile.
+  static double hash(int x, int y) => (((x * 73856093) ^ (y * 19349663)) & 0xFF) / 255.0;
 }

@@ -1,3 +1,4 @@
+import 'dart:math';
 import 'dart:ui';
 
 class Player {
@@ -15,18 +16,17 @@ class Player {
 
   // Inventory
   Map<String, int> inventory;
-  String selectedTool;
 
   // Stats
   int level;
   int experience;
   int experienceToNextLevel;
 
-  // Accumulates time spent starving so damage is dealt once per interval.
-  double _starvationTimer = 0;
+  // Accumulates time so health changes once per interval.
+  double _healthTimer = 0;
 
   static const double baseSpeed = 4.0;
-  static const double tiredSpeed = 2.0;
+  static const double tiredSpeed = 2.5;
 
   Player({
     required this.position,
@@ -39,21 +39,15 @@ class Player {
     this.maxEnergy = 100,
     this.direction = 'down',
     Map<String, int>? inventory,
-    this.selectedTool = 'none',
     this.level = 1,
     this.experience = 0,
     this.experienceToNextLevel = 100,
   }) : inventory = inventory ??
             {
-              'wood': 0,
-              'stone': 0,
-              'apple': 0,
-              'berry': 0,
-              'fish': 0,
               'axe': 1,
               'pickaxe': 1,
               'fishing_rod': 1,
-              'seeds': 0,
+              'berry': 3,
             };
 
   bool get isDead => health <= 0;
@@ -110,32 +104,81 @@ class Player {
   }
 
   /// Advances survival stats by [dt] seconds.
-  void updateStats(double dt, {required bool moving}) {
-    // A full stomach lasts roughly eight minutes.
-    hunger = (hunger - 0.2 * dt).clamp(0, maxHunger.toDouble());
+  ///
+  /// Sitting by a fire restores energy; walking tires the player, and the
+  /// cold away from a fire at night tires them twice as fast.
+  void updateStats(double dt, {required bool moving, bool nearFire = false, bool cold = false}) {
+    // A full stomach lasts about eleven minutes.
+    hunger = max(0, hunger - 0.15 * dt);
 
-    // Walking tires the player faster than standing still.
-    final drain = moving ? 0.4 : 0.05;
-    energy = (energy - drain * dt).clamp(0, maxEnergy.toDouble());
+    if (nearFire && !moving) {
+      energy = min(maxEnergy.toDouble(), energy + 3 * dt);
+    } else {
+      var drain = moving ? 0.35 : 0.03;
+      if (cold) drain *= 2;
+      energy = max(0, energy - drain * dt);
+    }
 
-    // Starving costs 1 health every 2 seconds.
     if (hunger <= 10) {
-      _starvationTimer += dt;
-      while (_starvationTimer >= 2) {
-        _starvationTimer -= 2;
+      // Starving costs 1 health every 2 seconds.
+      _healthTimer += dt;
+      while (_healthTimer >= 2) {
+        _healthTimer -= 2;
         takeDamage(1);
       }
+    } else if (hunger > 50 && health < maxHealth) {
+      // A full stomach slowly heals 1 health every 6 seconds.
+      _healthTimer += dt;
+      while (_healthTimer >= 6) {
+        _healthTimer -= 6;
+        heal(1);
+      }
     } else {
-      _starvationTimer = 0;
+      _healthTimer = 0;
     }
 
     speed = energy <= 20 ? tiredSpeed : baseSpeed;
   }
 
-  void rest() {
-    energy = (energy + 10).clamp(0, maxEnergy.toDouble());
-    hunger = (hunger - 1).clamp(0, maxHunger.toDouble());
+  /// Restores energy after a night's sleep or a shorter nap.
+  void sleep({required bool night}) {
+    energy = maxEnergy.toDouble();
+    hunger = max(0, hunger - (night ? 10 : 5));
+    if (hunger > 20) heal(night ? 20 : 5);
   }
+
+  Map<String, dynamic> toJson() => {
+        'x': position.dx,
+        'y': position.dy,
+        'health': health,
+        'maxHealth': maxHealth,
+        'hunger': hunger,
+        'maxHunger': maxHunger,
+        'energy': energy,
+        'maxEnergy': maxEnergy,
+        'direction': direction,
+        'inventory': inventory,
+        'level': level,
+        'experience': experience,
+        'experienceToNextLevel': experienceToNextLevel,
+      };
+
+  factory Player.fromJson(Map<String, dynamic> json) => Player(
+        position: Offset((json['x'] as num).toDouble(), (json['y'] as num).toDouble()),
+        health: json['health'] as int,
+        maxHealth: json['maxHealth'] as int,
+        hunger: (json['hunger'] as num).toDouble(),
+        maxHunger: json['maxHunger'] as int,
+        energy: (json['energy'] as num).toDouble(),
+        maxEnergy: json['maxEnergy'] as int,
+        direction: json['direction'] as String,
+        inventory: {
+          for (final e in (json['inventory'] as Map).entries) e.key as String: (e.value as num).toInt(),
+        },
+        level: json['level'] as int,
+        experience: json['experience'] as int,
+        experienceToNextLevel: json['experienceToNextLevel'] as int,
+      );
 
   Player copy() {
     return Player(
@@ -149,7 +192,6 @@ class Player {
       maxEnergy: maxEnergy,
       direction: direction,
       inventory: Map.from(inventory),
-      selectedTool: selectedTool,
       level: level,
       experience: experience,
       experienceToNextLevel: experienceToNextLevel,
